@@ -1,4 +1,4 @@
-;;; imenu-list.el --- Show imenu entries in a separate buffer
+;;; imenu-list.el --- Show imenu entries in a separate buffer  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2015-2021 Bar Magal & Contributors
 
@@ -27,7 +27,7 @@
 ;; buffer with the name "*Ilist*".
 ;;
 ;; Activation and deactivation:
-;; M-x imenu-list-minor-mode
+;; M-x global-imenu-list-minor-mode
 ;;
 ;; Key shortcuts from "*Ilist*" buffer:
 ;; <enter>: Go to current definition
@@ -37,7 +37,7 @@
 ;; Change "*Ilist*" buffer's position and size:
 ;; `imenu-list-position', `imenu-list-size'.
 ;;
-;; Should invoking `imenu-list-minor-mode' also select the "*Ilist*"
+;; Should invoking `global-imenu-list-minor-mode' also select the "*Ilist*"
 ;; window?
 ;; `imenu-list-focus-after-activation'
 
@@ -45,7 +45,7 @@
 
 (require 'imenu)
 (require 'cl-lib)
-(require 'hideshow)
+(require 'hierarchy)
 
 (defconst imenu-list-buffer-name "*Ilist*"
   "Name of the buffer that is used to display imenu entries.")
@@ -61,7 +61,7 @@ The first item in this list corresponds to the first line in the
 imenu-list buffer, the second item matches the second line, and so on.")
 
 (defvar imenu-list--displayed-buffer nil
-  "The buffer who owns the saved imenu entries.")
+  "The buffer that the saved imenu entries relate to.")
 
 (defvar imenu-list--last-location nil
   "Location from which last `imenu-list-update' was done.
@@ -102,7 +102,7 @@ buffer.  See `mode-line-format' for allowed values."
 (defcustom imenu-list-focus-after-activation nil
   "Whether or not to select imenu-list window after activation.
 Non-nil to select the imenu-list window automatically when
-`imenu-list-minor-mode' is activated."
+`global-imenu-list-minor-mode' is activated."
   :group 'imenu-list
   :type 'boolean)
 
@@ -124,72 +124,47 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   :group 'imenu-list
   :type 'function)
 
-(defface imenu-list-entry-face
-  '((t))
-  "Basic face for imenu-list entries in the imenu-list buffer."
-  :group 'imenu-list)
-
 (defface imenu-list-entry-face-0
-  '((((class color) (background light))
-     :inherit imenu-list-entry-face
-     :foreground "maroon")
-    (((class color) (background dark))
-     :inherit imenu-list-entry-face
-     :foreground "gold"))
+  '((t :inherit font-lock-type-face))
   "Face for outermost imenu-list entries (depth 0)."
   :group 'imenu-list)
 
 (defface imenu-list-entry-subalist-face-0
   '((t :inherit imenu-list-entry-face-0
-       :weight bold :underline t))
+       :weight bold))
   "Face for subalist entries with depth 0."
   :group 'imenu-list)
 
 (defface imenu-list-entry-face-1
-  '((((class color) (background light))
-     :inherit imenu-list-entry-face
-     :foreground "dark green")
-    (((class color) (background dark))
-     :inherit imenu-list-entry-face
-     :foreground "light green"))
+  '((t :inherit font-lock-function-name-face))
   "Face for imenu-list entries with depth 1."
   :group 'imenu-list)
 
 (defface imenu-list-entry-subalist-face-1
   '((t :inherit imenu-list-entry-face-1
-       :weight bold :underline t))
+       :weight bold))
   "Face for subalist entries with depth 1."
   :group 'imenu-list)
 
 (defface imenu-list-entry-face-2
-  '((((class color) (background light))
-     :inherit imenu-list-entry-face
-     :foreground "dark blue")
-    (((class color) (background dark))
-     :inherit imenu-list-entry-face
-     :foreground "light blue"))
+  '((t :inherit font-lock-variable-name-face))
   "Face for imenu-list entries with depth 2."
   :group 'imenu-list)
 
 (defface imenu-list-entry-subalist-face-2
   '((t :inherit imenu-list-entry-face-2
-       :weight bold :underline t))
+       :weight bold))
   "Face for subalist entries with depth 2."
   :group 'imenu-list)
 
 (defface imenu-list-entry-face-3
-  '((((class color) (background light))
-     :inherit imenu-list-entry-face
-     :foreground "orange red")
-    (((class color) (background dark))
-     :inherit imenu-list-entry-face
-     :foreground "sandy brown"))
+  '((t :inherit font-lock-string-face))
   "Face for imenu-list entries with depth 3."
   :group 'imenu-list)
 
 (defface imenu-list-entry-subalist-face-3
   '((t :inherit imenu-list-entry-face-3
-       :weight bold :underline t))
+       :weight bold))
   "Face for subalist entries with depth 0."
   :group 'imenu-list)
 
@@ -203,7 +178,7 @@ current entry (current entry is a \"father\")."
     (1 (if subalistp 'imenu-list-entry-subalist-face-1 'imenu-list-entry-face-1))
     (2 (if subalistp 'imenu-list-entry-subalist-face-2 'imenu-list-entry-face-2))
     (3 (if subalistp 'imenu-list-entry-subalist-face-3 'imenu-list-entry-face-3))
-    (t (if subalistp 'imenu-list-entry-subalist-face-3 'imenu-list-entry-face-3))))
+    (t (if subalistp 'imenu-list-entry-subalist-face-3 'imenu-list-entry-face-2))))
 
 ;;; collect entries
 
@@ -218,95 +193,63 @@ current entry (current entry is a \"father\")."
   (setq imenu-list--imenu-entries imenu--index-alist)
   (setq imenu-list--displayed-buffer (current-buffer)))
 
-
 ;;; print entries
 
-(defun imenu-list--depth-string (depth)
-  "Return a prefix string representing an entry's DEPTH."
-  (let ((indents (cl-loop for i from 1 to depth collect "  ")))
-    (format "%s%s"
-            (mapconcat #'identity indents "")
-            (if indents " " ""))))
-
-(defun imenu-list--action-goto-entry (event)
+(defun imenu-list--action-goto-entry (event item)
   "Goto the entry that was clicked.
-EVENT holds the data of what was clicked."
+EVENT is the click event, ITEM is the item clocked on."
   (let ((window (posn-window (event-end event)))
-        (pos (posn-point (event-end event)))
         (ilist-buffer (get-buffer imenu-list-buffer-name)))
     (when (and (windowp window)
                (eql (window-buffer window) ilist-buffer))
       (with-current-buffer ilist-buffer
-        (goto-char pos)
-        (imenu-list-goto-entry)))))
+        (imenu-list-goto-entry item)))))
 
-(defun imenu-list--action-toggle-hs (event)
-  "Toggle hide/show state of current block.
-EVENT holds the data of what was clicked.
-See `hs-minor-mode' for information on what is hide/show."
-  (let ((window (posn-window (event-end event)))
-        (pos (posn-point (event-end event)))
-        (ilist-buffer (get-buffer imenu-list-buffer-name)))
-    (when (and (windowp window)
-               (eql (window-buffer window) ilist-buffer))
-      (with-current-buffer ilist-buffer
-        (goto-char pos)
-        (hs-toggle-hiding)))))
+(defun imenu-list--imenu-to-line-entry (entry)
+  (cons entry
+        (when (imenu--subalist-p entry)
+          (mapcan #'imenu-list--imenu-to-line-entry (cdr entry)))))
 
-(defun imenu-list--insert-entry (entry depth)
-  "Insert a line for ENTRY with DEPTH."
-  (if (imenu--subalist-p entry)
-      (progn
-        (insert (imenu-list--depth-string depth))
-        (insert-button (format "+ %s" (car entry))
-                       'face (imenu-list--get-face depth t)
-                       'help-echo (format "Toggle: %s"
-                                          (car entry))
-                       'follow-link t
-                       'action ;; #'imenu-list--action-goto-entry
-                       #'imenu-list--action-toggle-hs)
-        (insert "\n"))
-    (insert (imenu-list--depth-string depth))
-    (insert-button (format "%s" (car entry))
-                   'face (imenu-list--get-face depth nil)
-                   'help-echo (format "Go to: %s"
-                                      (car entry))
-                   'follow-link t
-                   'action #'imenu-list--action-goto-entry)
-    (insert "\n")))
+(defun imenu-list--subalist-p (entry)
+  (consp (cdr entry)))
 
-(defun imenu-list--insert-entries-internal (index-alist depth)
-  "Insert all imenu entries in INDEX-ALIST into the current buffer.
-DEPTH is the depth of the code block were the entries are written.
-Each entry is inserted in its own line.
-Each entry is appended to `imenu-list--line-entries' as well."
-  (dolist (entry index-alist)
-    (setq imenu-list--line-entries (cons entry imenu-list--line-entries))
-    (imenu-list--insert-entry entry depth)
-    (when (imenu--subalist-p entry)
-      (imenu-list--insert-entries-internal (cdr entry) (1+ depth)))))
+(defun imenu-list--insert-label (item indent)
+  (cl-flet ((insert (subalistp &rest properties)
+              (apply #'insert-text-button (car item)
+                     'face (imenu-list--get-face indent subalistp)
+                     properties)))
+    (if (imenu-list--subalist-p item)
+        (insert t)
+      (insert nil
+              'follow-link t
+              'action (lambda (event)
+                        (imenu-list--action-goto-entry event item))))))
 
 (defun imenu-list-insert-entries ()
-  "Insert all imenu entries into the current buffer.
-The entries are taken from `imenu-list--imenu-entries'.
-Each entry is inserted in its own line.
-Each entry is appended to `imenu-list--line-entries' as well
- (`imenu-list--line-entries' is cleared in the beginning of this
-function)."
+  (setq imenu-list--line-entries
+        (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (setq imenu-list--line-entries nil)
-    (imenu-list--insert-entries-internal imenu-list--imenu-entries 0)
-    (setq imenu-list--line-entries (nreverse imenu-list--line-entries))))
-
+    (dolist (item imenu-list--imenu-entries)
+      (if (imenu-list--subalist-p item)
+          (let* ((h (hierarchy-from-list item nil
+                                         (lambda (item)
+                                           (when (imenu-list--subalist-p item)
+                                             (cdr item)))))
+                 (widget (hierarchy-convert-to-tree-widget h #'imenu-list--insert-label)))
+            (widget-create widget))
+        (insert-text-button (car item)
+                            'face (imenu-list--get-face 0 nil)
+                            'follow-link t
+                            'action (lambda (event)
+                                      (imenu-list--action-goto-entry event item)))
+        (insert "\n"))))
+  (goto-char (point-min)))
 
 ;;; goto entries
 
 (defcustom imenu-list-after-jump-hook '(recenter)
-  "Hook to run after jumping to an entry from the imenu-list buffer.
-This hook is ran also when the focus remains on the imenu-list
-buffer, or in other words: this hook is ran by both
-`imenu-list-goto-entry' and `imenu-list-display-entry'."
+  "Hook to run after jumping to an entry from the imenu-list buffer."
   :group 'imenu-list
   :type 'hook)
 
@@ -314,44 +257,13 @@ buffer, or in other words: this hook is ran by both
   "Find in `imenu-list--line-entries' the entry in the current line."
   (nth (1- (line-number-at-pos)) imenu-list--line-entries))
 
-(defun imenu-list--goto-entry (entry)
-  "Jump to ENTRY in the original buffer."
-  (pop-to-buffer imenu-list--displayed-buffer)
-  (imenu entry)
-  (run-hooks 'imenu-list-after-jump-hook)
-  (imenu-list--show-current-entry))
-
-(defun imenu-list-goto-entry ()
+(defun imenu-list-goto-entry (item)
   "Switch to the original buffer and display the entry under point."
   (interactive)
-  (imenu-list--goto-entry (imenu-list--find-entry)))
-
-(defun imenu-list-display-entry ()
-  "Display the symbol under `point' in the original buffer."
-  (interactive)
-  (save-selected-window
-    (imenu-list-goto-entry)))
-
-(defun imenu-list-ret-dwim ()
-  "Jump to or toggle the entry at `point'."
-  (interactive)
-  (let ((entry (imenu-list--find-entry)))
-    (if (imenu--subalist-p entry)
-        (hs-toggle-hiding)
-      (imenu-list--goto-entry entry))))
-
-(defun imenu-list-display-dwim ()
-  "Display or toggle the entry at `point'."
-  (interactive)
-  (save-selected-window
-    (imenu-list-ret-dwim)))
-
-(defalias 'imenu-list-<=
-  (if (ignore-errors (<= 1 2 3))
-      #'<=
-    #'(lambda (x y z)
-        "Return t if X <= Y and Y <= Z."
-        (and (<= x y) (<= y z)))))
+  (pop-to-buffer imenu-list--displayed-buffer)
+  (goto-char (cdr item))
+  (run-hooks 'imenu-list-after-jump-hook)
+  (imenu-list--show-current-entry))
 
 ;; hide false-positive byte-compile warning. We only use these functions if
 ;; eglot is loaded.
@@ -411,7 +323,7 @@ continue with the regular logic to find a translator function."
                ;; need to translate them back to "real" positions
                ;; (see https://github.com/bmag/imenu-list/issues/20)
                (entry-pos (funcall get-pos-fn entry-pos-raw)))
-          (when (imenu-list-<= offset entry-pos point-pos)
+          (when (<= offset entry-pos point-pos)
             (setq offset entry-pos)
             (setq match-entry entry)))))))
 
@@ -436,13 +348,14 @@ Either a positive integer (number of rows/columns) or a percentage."
 
 (defcustom imenu-list-position 'right
   "Position of the imenu-list buffer.
-Either 'right, 'left, 'above or 'below.  This value is passed
-directly to `split-window'."
+Either 'right, 'left, 'above, 'below or 'none.  'none means leave
+`display-buffer-alist` alone and let user deal with window management."
   :group 'imenu-list
   :type '(choice (const above)
                  (const below)
                  (const left)
-                 (const right)))
+                 (const right)
+                 (const none)))
 
 (defcustom imenu-list-auto-resize nil
   "If non-nil, auto-resize window after updating the imenu-list buffer.
@@ -504,21 +417,31 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
               purpose-special-action-sequences
               :test #'equal))
 
-(imenu-list-install-display-buffer)
 (eval-after-load 'window-purpose
   '(imenu-list-install-purpose-display))
 
 
-;;; define major mode
+;;; imenu-list buffer management
+
+(defvar imenu-list-major-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "n") #'next-line)
+    (define-key map (kbd "p") #'previous-line)
+    (define-key map (kbd "g") #'imenu-list-refresh)
+    (define-key map (kbd "q") #'imenu-list-quit-window)
+    map))
+
+(define-derived-mode imenu-list-major-mode special-mode "Ilist"
+  "Major mode for showing the `imenu' entries of a buffer (an Ilist).
+\\{imenu-list-mode-map}"
+  (setq-local mode-line-format imenu-list-mode-line-format)
+  (read-only-mode 1))
 
 (defun imenu-list-get-buffer-create ()
-  "Return the imenu-list buffer.
-If it doesn't exist, create it."
   (or (get-buffer imenu-list-buffer-name)
       (let ((buffer (get-buffer-create imenu-list-buffer-name)))
-        (with-current-buffer buffer
-          (imenu-list-major-mode)
-          buffer))))
+        (imenu-list-major-mode)
+        buffer)))
 
 (defun imenu-list-resize-window ()
   "Resize imenu-list window according to its content."
@@ -535,7 +458,7 @@ imenu entries did not change since the last update."
   (catch 'index-failure
     (let ((old-entries imenu-list--imenu-entries)
           (location (point-marker)))
-      ;; don't update if `point' didn't move - fixes issue #11
+      ;; don't update if `point' didn't move
       (unless (and (null force-update)
                    imenu-list--last-location
                    (marker-buffer imenu-list--last-location)
@@ -605,75 +528,19 @@ If the imenu-list buffer doesn't exist, create it."
   (imenu-list-show))
 
 ;; hide false-positive byte-compile warning
-(defvar imenu-list-minor-mode)
+(defvar global-imenu-list-minor-mode)
 
 (defun imenu-list-quit-window ()
-  "Disable `imenu-list-minor-mode' and hide the imenu-list buffer.
-If `imenu-list-minor-mode' is already disabled, just call `quit-window'."
+  "Disable `global-imenu-list-minor-mode' and hide the imenu-list buffer.
+If `global-imenu-list-minor-mode' is already disabled, just call `quit-window'."
   (interactive)
-  ;; the reason not to call `(imenu-list-minor-mode -1)' regardless of current
+  ;; the reason not to call `(global-imenu-list-minor-mode -1)' regardless of current
   ;; state, is that it quits all of imenu-list windows instead of just the
   ;; current one.
-  (if imenu-list-minor-mode
-      ;; disabling `imenu-list-minor-mode' also quits the window
-      (imenu-list-minor-mode -1)
+  (if global-imenu-list-minor-mode
+      ;; disabling `global-imenu-list-minor-mode' also quits the window
+      (global-imenu-list-minor-mode -1)
     (quit-window)))
-
-(defvar imenu-list-major-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") #'imenu-list-ret-dwim)
-    (define-key map (kbd "SPC") #'imenu-list-display-dwim)
-    (define-key map (kbd "n") #'next-line)
-    (define-key map (kbd "p") #'previous-line)
-    (define-key map (kbd "TAB") #'hs-toggle-hiding)
-    (define-key map (kbd "f") #'hs-toggle-hiding)
-    (define-key map (kbd "g") #'imenu-list-refresh)
-    (define-key map (kbd "q") #'imenu-list-quit-window)
-    map))
-
-(define-derived-mode imenu-list-major-mode special-mode "Ilist"
-  "Major mode for showing the `imenu' entries of a buffer (an Ilist).
-\\{imenu-list-mode-map}"
-  (read-only-mode 1)
-  (imenu-list-install-hideshow))
-(add-hook 'imenu-list-major-mode-hook #'hs-minor-mode)
-
-(defun imenu-list--set-mode-line ()
-  "Locally change `mode-line-format' to `imenu-list-mode-line-format'."
-  (setq-local mode-line-format imenu-list-mode-line-format))
-(add-hook 'imenu-list-major-mode-hook #'imenu-list--set-mode-line)
-
-(defun imenu-list-install-hideshow ()
-  "Install imenu-list settings for hideshow."
-  ;; "\\b\\B" is a regexp that can't match anything
-  (setq-local comment-start "\\b\\B")
-  (setq-local comment-end "\\b\\B")
-  (setq hs-special-modes-alist
-        (cl-delete 'imenu-list-major-mode hs-special-modes-alist :key #'car))
-  (push `(imenu-list-major-mode "\\s-*\\+ " "\\s-*\\+ " ,comment-start imenu-list-forward-sexp nil)
-        hs-special-modes-alist))
-
-(defun imenu-list-forward-sexp (&optional arg)
-  "Move to next entry of same depth.
-This function is intended to be used by `hs-minor-mode'.  Don't use it
-for anything else.
-ARG is ignored."
-  (beginning-of-line)
-  (while (= (char-after) 32)
-    (forward-char))
-  ;; (when (= (char-after) ?+)
-  ;;   (forward-char 2))
-  (let ((spaces (- (point) (point-at-bol))))
-    (forward-line)
-    ;; ignore-errors in case we're at the last line
-    (ignore-errors (forward-char spaces))
-    (while (and (not (eobp))
-                (= (char-after) 32))
-      (forward-line)
-      ;; ignore-errors in case we're at the last line
-      (ignore-errors (forward-char spaces))))
-  (forward-line -1)
-  (end-of-line))
 
 ;;; define minor mode
 
@@ -716,12 +583,10 @@ afterwards."
                (imenu-list-start-timer)
              (imenu-list-stop-timer)))))
 
-(define-obsolete-function-alias 'imenu-list-update-safe 'imenu-list-update "imenu-list 0.10")
-
 ;;;###autoload
-(define-minor-mode imenu-list-minor-mode
+(define-minor-mode global-imenu-list-minor-mode
   nil :global t :group 'imenu-list
-  (if imenu-list-minor-mode
+  (if global-imenu-list-minor-mode
       (progn
         (imenu-list-get-buffer-create)
         (when imenu-list-auto-update
@@ -740,15 +605,15 @@ afterwards."
 
 ;;;###autoload
 (defun imenu-list-smart-toggle ()
-  "Enable or disable `imenu-list-minor-mode' according to buffer's visibility.
+  "Enable or disable `global-imenu-list-minor-mode' according to buffer's visibility.
 If the imenu-list buffer is displayed in any window, disable
-`imenu-list-minor-mode', otherwise enable it.
+`global-imenu-list-minor-mode', otherwise enable it.
 Note that all the windows in every frame searched, even invisible ones, not
 only those in the selected frame."
   (interactive)
   (if (get-buffer-window imenu-list-buffer-name t)
-      (imenu-list-minor-mode -1)
-    (imenu-list-minor-mode 1)))
+      (global-imenu-list-minor-mode -1)
+    (global-imenu-list-minor-mode 1)))
 
 (provide 'imenu-list)
 
