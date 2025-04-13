@@ -195,15 +195,19 @@ current entry (current entry is a \"father\")."
 
 ;;; print entries
 
-(defun imenu-list--action-goto-entry (event item)
-  "Goto the entry that was clicked.
-EVENT is the click event, ITEM is the item clocked on."
+(defun imenu-list--event-ilist-buffer (event)
   (let ((window (posn-window (event-end event)))
         (ilist-buffer (get-buffer imenu-list-buffer-name)))
     (when (and (windowp window)
                (eql (window-buffer window) ilist-buffer))
-      (with-current-buffer ilist-buffer
-        (imenu-list-goto-entry item)))))
+      ilist-buffer)))
+
+(defun imenu-list--action-goto-entry (event item)
+  "Goto the entry that was clicked.
+EVENT is the click event, ITEM is the item clocked on."
+  (when-let ((buffer (imenu-list--event-ilist-buffer event)))
+    (with-current-buffer buffer
+      (imenu-list-goto-entry item))))
 
 (defun imenu-list--imenu-to-line-entry (entry)
   (cons entry
@@ -222,26 +226,32 @@ EVENT is the click event, ITEM is the item clocked on."
                 (if (and (consp item) (consp (car item)) (null (cdar item)))
                     (car item)
                   item))
-              (insert-label (item_ indent)
-                (let ((item (cdr item_)))
-                  (cl-flet ((insert (subalistp &rest properties)
-                              (apply #'insert-text-button (car item)
-                                     'face (imenu-list--get-face indent subalistp)
-                                     properties)))
-                    (if (imenu-list--subalist-p item)
-                        (insert t)
-                      (insert nil
-                              'follow-link t
-                              'action (lambda (event)
-                                        (imenu-list--action-goto-entry event item))))))))
+              (label-inserter (box)
+                (lambda (item_ indent)
+                  (let ((item (cdr item_)))
+                    (cl-flet ((insert (subalistp &rest properties)
+                                (apply #'insert-text-button (car item)
+                                       'face (imenu-list--get-face indent subalistp)
+                                       properties)))
+                      (if (imenu-list--subalist-p item)
+                          (insert t
+                                  'action (lambda (event)
+                                            (when-let ((buffer (imenu-list--event-ilist-buffer event)))
+                                              (with-current-buffer buffer
+                                                (widget-apply (car box) :action event)))))
+                        (insert nil
+                                'follow-link t
+                                'action (lambda (event)
+                                          (imenu-list--action-goto-entry event item)))))))))
       (dolist (item (unpeal imenu-list--imenu-entries))
         (if (imenu-list--subalist-p item)
             (let* ((h (hierarchy-from-list item t
                                            (lambda (item)
                                              (when (imenu-list--subalist-p item)
                                                (cdr item)))))
-                   (widget (hierarchy-convert-to-tree-widget h #'insert-label)))
-              (widget-create widget))
+                   (box (list nil))
+                   (widget (hierarchy-convert-to-tree-widget h (label-inserter box))))
+              (setf (car box) (widget-create widget)))
           (when (consp item)
             (insert-text-button (car item)
                                 'face (imenu-list--get-face 0 nil)
