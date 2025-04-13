@@ -27,7 +27,7 @@
 ;; buffer with the name "*Ilist*".
 ;;
 ;; Activation and deactivation:
-;; M-x global-imenu-list-minor-mode
+;; M-x global-imenu-list-mode
 ;;
 ;; Key shortcuts from "*Ilist*" buffer:
 ;; <enter>: Go to current definition
@@ -37,7 +37,7 @@
 ;; Change "*Ilist*" buffer's position and size:
 ;; `imenu-list-position', `imenu-list-size'.
 ;;
-;; Should invoking `global-imenu-list-minor-mode' also select the "*Ilist*"
+;; Should invoking `global-imenu-list-mode' also select the "*Ilist*"
 ;; window?
 ;; `imenu-list-focus-after-activation'
 
@@ -102,7 +102,7 @@ buffer.  See `mode-line-format' for allowed values."
 (defcustom imenu-list-focus-after-activation nil
   "Whether or not to select imenu-list window after activation.
 Non-nil to select the imenu-list window automatically when
-`global-imenu-list-minor-mode' is activated."
+`global-imenu-list-mode' is activated."
   :group 'imenu-list
   :type 'boolean)
 
@@ -423,7 +423,7 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
 
 ;;; imenu-list buffer management
 
-(defvar imenu-list-major-mode-map
+(defvar imenu-list-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "n") #'next-line)
     (define-key map (kbd "p") #'previous-line)
@@ -431,7 +431,7 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
     (define-key map (kbd "q") #'imenu-list-quit-window)
     map))
 
-(define-derived-mode imenu-list-major-mode special-mode "Ilist"
+(define-derived-mode imenu-list-mode special-mode "Ilist"
   "Major mode for showing the `imenu' entries of a buffer (an Ilist).
 \\{imenu-list-mode-map}"
   (setq-local mode-line-format imenu-list-mode-line-format)
@@ -440,7 +440,8 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
 (defun imenu-list-get-buffer-create ()
   (or (get-buffer imenu-list-buffer-name)
       (let ((buffer (get-buffer-create imenu-list-buffer-name)))
-        (imenu-list-major-mode)
+        (with-current-buffer buffer
+          (imenu-list-mode))
         buffer)))
 
 (defun imenu-list-resize-window ()
@@ -528,18 +529,18 @@ If the imenu-list buffer doesn't exist, create it."
   (imenu-list-show))
 
 ;; hide false-positive byte-compile warning
-(defvar global-imenu-list-minor-mode)
+(defvar global-imenu-list-mode)
 
 (defun imenu-list-quit-window ()
-  "Disable `global-imenu-list-minor-mode' and hide the imenu-list buffer.
-If `global-imenu-list-minor-mode' is already disabled, just call `quit-window'."
+  "Disable `global-imenu-list-mode' and hide the imenu-list buffer.
+If `global-imenu-list-mode' is already disabled, just call `quit-window'."
   (interactive)
-  ;; the reason not to call `(global-imenu-list-minor-mode -1)' regardless of current
+  ;; the reason not to call `(global-imenu-list-mode -1)' regardless of current
   ;; state, is that it quits all of imenu-list windows instead of just the
   ;; current one.
-  (if global-imenu-list-minor-mode
-      ;; disabling `global-imenu-list-minor-mode' also quits the window
-      (global-imenu-list-minor-mode -1)
+  (if global-imenu-list-mode
+      ;; disabling `global-imenu-list-mode' also quits the window
+      (global-imenu-list-mode -1)
     (quit-window)))
 
 ;;; define minor mode
@@ -584,9 +585,9 @@ afterwards."
              (imenu-list-stop-timer)))))
 
 ;;;###autoload
-(define-minor-mode global-imenu-list-minor-mode
+(define-minor-mode global-imenu-list-mode
   nil :global t :group 'imenu-list
-  (if global-imenu-list-minor-mode
+  (if global-imenu-list-mode
       (progn
         (imenu-list-get-buffer-create)
         (when imenu-list-auto-update
@@ -605,15 +606,15 @@ afterwards."
 
 ;;;###autoload
 (defun imenu-list-smart-toggle ()
-  "Enable or disable `global-imenu-list-minor-mode' according to buffer's visibility.
+  "Enable or disable `global-imenu-list-mode' according to buffer's visibility.
 If the imenu-list buffer is displayed in any window, disable
-`global-imenu-list-minor-mode', otherwise enable it.
+`global-imenu-list-mode', otherwise enable it.
 Note that all the windows in every frame searched, even invisible ones, not
 only those in the selected frame."
   (interactive)
   (if (get-buffer-window imenu-list-buffer-name t)
-      (global-imenu-list-minor-mode -1)
-    (global-imenu-list-minor-mode 1)))
+      (global-imenu-list-mode -1)
+    (global-imenu-list-mode 1)))
 
 (provide 'imenu-list)
 
