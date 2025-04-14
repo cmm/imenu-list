@@ -208,9 +208,12 @@ EVENT is the click event, ITEM is the item clocked on."
       (imenu-list-goto-entry item))))
 
 (defun imenu-list--imenu-to-line-entry (entry)
-  (cons entry
-        (when (imenu--subalist-p entry)
-          (mapcan #'imenu-list--imenu-to-line-entry (cdr entry)))))
+  (let ((kids (when (imenu--subalist-p entry)
+                (mapcan #'imenu-list--imenu-to-line-entry (cdr entry))))
+        (pos (imenu-list--item-pos entry)))
+    (if pos
+        (cons (cons (car entry) pos) kids)
+      kids)))
 
 (defun imenu-list-insert-entries ()
   (setq imenu-list--line-entries
@@ -223,8 +226,8 @@ EVENT is the click event, ITEM is the item clocked on."
                   (cl-flet ((subalist-tag ()
                               (with-temp-buffer
                                 (let* ((name (car item))
-                                       (br (plist-get (text-properties-at 0 name) 'breadcrumb-region))
-                                       (face (imenu-list--get-face indent br)))
+                                       (pos  (imenu-list--item-pos item))
+                                       (face (imenu-list--get-face indent pos)))
                                   (insert-text-button name
                                                       'face face
                                                       'follow-link "\C-m"
@@ -237,8 +240,8 @@ EVENT is the click event, ITEM is the item clocked on."
                                                                     (let ((tree (widget-get (widget-at) :parent)))
                                                                       (unless (widget-get tree :open)
                                                                         (widget-apply-action tree)))))
-                                                                (when br
-                                                                  (imenu-list-goto-entry (cons name (car br))))))
+                                                                (when pos
+                                                                  (imenu-list-goto-entry item))))
                                   (buffer-substring (point-min) (point-max))))))
                     (apply #'widget-convert
                            (if (imenu--subalist-p item)
@@ -277,11 +280,20 @@ EVENT is the click event, ITEM is the item clocked on."
   "Find in `imenu-list--line-entries' the entry in the current line."
   (nth (1- (line-number-at-pos)) imenu-list--line-entries))
 
+(defun imenu-list--item-pos (item)
+  (or
+   (when-let ((br (plist-get (text-properties-at 0 (car item)) 'breadcrumb-region)))
+     (car br))
+   (cond
+    ((imenu--subalist-p item) nil)
+    ((consp (cdr item))       (cadr item))
+    (t                        (cdr item)))))
+
 (defun imenu-list-goto-entry (item)
   "Switch to the original buffer and display the entry under point."
   (interactive)
   (pop-to-buffer imenu-list--displayed-buffer)
-  (goto-char (cdr item))
+  (goto-char (imenu-list--item-pos item))
   (run-hooks 'imenu-list-after-jump-hook)
   (imenu-list--show-current-entry))
 
@@ -333,12 +345,8 @@ continue with the regular logic to find a translator function."
         (get-pos-fn (imenu-list-position-translator))
         match-entry)
     (dolist (entry imenu-list--line-entries match-entry)
-      ;; "special entry" is described in `imenu--index-alist'
       (unless (imenu--subalist-p entry)
-        (let* ((is-special-entry (listp (cdr entry)))
-               (entry-pos-raw (if is-special-entry
-                                  (cadr entry)
-                                (cdr entry)))
+        (let* ((entry-pos-raw (cdr entry))
                ;; sometimes imenu doesn't use numbers/markers as positions, so we
                ;; need to translate them back to "real" positions
                ;; (see https://github.com/bmag/imenu-list/issues/20)
