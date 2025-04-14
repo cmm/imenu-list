@@ -56,11 +56,6 @@
 This is a copy of the imenu entries of the buffer we want to
 display in the imenu-list buffer.")
 
-(defvar imenu-list--line-entries nil
-  "List of imenu entries displayed in the imenu-list buffer.
-The first item in this list corresponds to the first line in the
-imenu-list buffer, the second item matches the second line, and so on.")
-
 (defvar imenu-list--displayed-buffer nil
   "The buffer that the saved imenu entries relate to.")
 
@@ -207,19 +202,9 @@ EVENT is the click event, ITEM is the item clocked on."
     (with-current-buffer buffer
       (imenu-list-goto-entry item))))
 
-(defun imenu-list--imenu-to-line-entry (entry)
-  (let ((kids (when (imenu--subalist-p entry)
-                (mapcan #'imenu-list--imenu-to-line-entry (cdr entry))))
-        (pos (imenu-list--item-pos entry)))
-    (if pos
-        (cons (cons (car entry) pos) kids)
-      kids)))
-
-(defvar imenu-list--pos-entries)
+(defvar imenu-list--pos-entries nil)
 
 (defun imenu-list-insert-entries ()
-  (setq imenu-list--line-entries
-        (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
   (let ((inhibit-read-only t)
         (n-top-level-widgets 0)
         (idx 0)
@@ -238,7 +223,7 @@ EVENT is the click event, ITEM is the item clocked on."
                     (push (cons (cl-list* name idx path) pos) pos-entries)
                     idx))
                 (widgetize (item &optional path)
-                  (cl-flet ((subalist-tag ()
+                  (cl-flet ((subalist-tag (path)
                               (with-temp-buffer
                                 (let* ((name (car item))
                                        (pos  (imenu-list--item-pos item))
@@ -264,7 +249,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                (let ((path (cons (cl-incf idx) path)))
                                  (list 'tree-widget
                                        :idx  (car path)
-                                       :tag  (subalist-tag)
+                                       :tag  (subalist-tag path)
                                        :args (mapcar (lambda (item)
                                                        (widgetize item path))
                                                      (sorted (cdr item)))))
@@ -284,7 +269,7 @@ EVENT is the click event, ITEM is the item clocked on."
           (unless first-widget
             (setq first-widget widget))
           (cl-incf n-top-level-widgets))))
-    (setq-local imenu-list--pos-entries (sort pos-entries :key #'cdr))
+    (setq imenu-list--pos-entries (sort pos-entries :key #'cdr))
     (when (and (= 1 n-top-level-widgets)
                (eq (widget-type first-widget) 'tree-widget))
       ;; pre-expand the sole tree widget
@@ -298,21 +283,17 @@ EVENT is the click event, ITEM is the item clocked on."
   :group 'imenu-list
   :type 'hook)
 
-(defun imenu-list--find-entry ()
-  "Find in `imenu-list--line-entries' the entry in the current line."
-  (nth (1- (line-number-at-pos)) imenu-list--line-entries))
-
 (defun imenu-list--find-pos-path ()
-  (when-let* ((buf     (get-buffer imenu-list-buffer-name))
-              (entries (with-current-buffer buf
-                         imenu-list--pos-entries)))
+  (let ((point-pos  (point-marker))
+        (get-pos-fn (imenu-list-position-translator)))
     (cl-block loop
       (let (found previous)
-        (dolist (entry entries found)
-          (if (<= (cdr entry) (point))
-              (setq found (car entry))
-            (cl-return-from loop previous))
-          (setq previous (car entry)))))))
+        (dolist (entry imenu-list--pos-entries found)
+          (let ((entry-pos (funcall get-pos-fn (cdr entry))))
+            (if (<= entry-pos point-pos)
+                (setq found (car entry))
+              (cl-return-from loop previous))
+            (setq previous (car entry))))))))
 
 (defun imenu-list--item-pos (item)
   (or
@@ -329,7 +310,7 @@ EVENT is the click event, ITEM is the item clocked on."
   (pop-to-buffer imenu-list--displayed-buffer)
   (goto-char (imenu-list--item-pos item))
   (run-hooks 'imenu-list-after-jump-hook)
-  (imenu-list--show-current-entry))
+  (imenu-list--hl-current-entry))
 
 ;; hide false-positive byte-compile warning. We only use these functions if
 ;; eglot is loaded.
@@ -372,33 +353,55 @@ continue with the regular logic to find a translator function."
    ;; default - return position as is
    (t #'identity)))
 
-(defun imenu-list--current-entry ()
-  "Find entry in `imenu-list--line-entries' matching current position."
-  (let ((point-pos (point-marker))
-        (offset (point-min-marker))
-        (get-pos-fn (imenu-list-position-translator))
-        match-entry)
-    (dolist (entry imenu-list--line-entries match-entry)
-      (unless (imenu--subalist-p entry)
-        (let* ((entry-pos-raw (cdr entry))
-               ;; sometimes imenu doesn't use numbers/markers as positions, so we
-               ;; need to translate them back to "real" positions
-               ;; (see https://github.com/bmag/imenu-list/issues/20)
-               (entry-pos (funcall get-pos-fn entry-pos-raw)))
-          (when (<= offset entry-pos point-pos)
-            (setq offset entry-pos)
-            (setq match-entry entry)))))))
-
-(defun imenu-list--show-current-entry ()
-  "Move the imenu-list buffer's point to the current position's entry."
-  (when (get-buffer-window (imenu-list-get-buffer-create))
-    (let ((line-number (cl-position (imenu-list--current-entry)
-                                    imenu-list--line-entries
-                                    :test 'equal)))
-      (with-selected-window (get-buffer-window (imenu-list-get-buffer-create))
+(defun imenu-list--hl-current-entry ()
+  (when-let ((path (imenu-list--find-pos-path)))
+    (cl-labels ((rec (path)
+                  (let ((idx (car path)))
+                    (if (stringp idx)
+                        (hl-line-mode 1)
+                      (skip-to-button)
+                      (while (not (at-idx idx))
+                        (forward-line)
+                        (skip-to-button))
+                      (let ((widget (interesting-widget (widget-at))))
+                        (cond
+                         ((or (null widget) (eq (widget-type widget) 'link))
+                          (rec (cdr path)))
+                         ((eq (widget-type widget) 'tree-widget)
+                          ;; first skip to the label
+                          (while (get-char-property (point) 'button)
+                            (forward-char))
+                          (while (not (get-char-property (point) 'button))
+                            (forward-char))
+                          (if (at-idx (cadr path))
+                              (rec (cdr path))
+                            (unless (widget-get widget :open)
+                              (save-excursion
+                                (widget-apply-action widget)))
+                            (forward-line)
+                            (rec (cdr path)))))))))
+                (skip-to-button ()
+                  (while (or (not (get-char-property (point) 'button))
+                             (eq (widget-type (widget-at)) 'tree-widget-leaf-icon))
+                    (forward-char)))
+                (idx-of (widget)
+                  (or (widget-get widget :idx)
+                      (widget-get widget 'idx)
+                      (when-let ((parent (widget-get widget :parent)))
+                        (idx-of parent))))
+                (at-idx (idx)
+                  (let ((idx-here (or (get-char-property (point) 'idx)
+                                      (when-let ((widget (widget-at)))
+                                        (idx-of widget)))))
+                    (eql idx-here idx)))
+                (interesting-widget (widget)
+                  (when widget
+                    (if (member (widget-type widget) '(tree-widget link))
+                        widget
+                      (interesting-widget (widget-get widget :parent))))))
+      (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
         (goto-char (point-min))
-        (forward-line line-number)
-        (hl-line-mode 1)))))
+        (rec (reverse path))))))
 
 ;;; window display settings
 
@@ -418,13 +421,6 @@ Either 'right, 'left, 'above, 'below or 'none.  'none means leave
                  (const left)
                  (const right)
                  (const none)))
-
-(defcustom imenu-list-auto-resize nil
-  "If non-nil, auto-resize window after updating the imenu-list buffer.
-Resizing the width works only for Emacs 24.4 and newer.  Resizing the
-height doesn't suffer that limitation."
-  :group 'imenu-list
-  :type 'boolean)
 
 (defcustom imenu-list-update-hook nil
   "Hook to run after updating the imenu-list buffer."
@@ -506,13 +502,6 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
           (imenu-list-mode))
         buffer)))
 
-(defun imenu-list-resize-window ()
-  "Resize imenu-list window according to its content."
-  (when imenu-list--line-entries
-    (let ((fit-window-to-buffer-horizontally t))
-      (mapc #'fit-window-to-buffer
-            (get-buffer-window-list (imenu-list-get-buffer-create))))))
-
 (defun imenu-list-update (&optional force-update)
   "Update the imenu-list buffer.
 If the imenu-list buffer doesn't exist, create it.
@@ -540,9 +529,7 @@ imenu entries did not change since the last update."
           (with-current-buffer (imenu-list-get-buffer-create)
             (imenu-list-insert-entries)))
         (when imenu-list-update-current-entry
-          (imenu-list--show-current-entry))
-        (when imenu-list-auto-resize
-          (imenu-list-resize-window))
+          (imenu-list--hl-current-entry))
         (run-hooks 'imenu-list-update-hook)
         nil))))
 

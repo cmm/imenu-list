@@ -1,6 +1,6 @@
 * fix source location indication
-** TODO sort out the mapping in the first place
-** TODO expand on demand
+** DONE sort out the mapping in the first place
+** DONE expand on demand
 that is, if the index item for current source location is hidden, make
 sure it is shown
 * TODO fix widget keymaps
@@ -8,8 +8,8 @@ it's a wild west at present: expanders have one keymap, buttons have
 another, <tab> behavior is inconsistent and useless
 * DONE expand top level if only one root
 or, even better, expand enough to fill the window?
-* TODO add useful bindings to the index
-like, xref stuff?
+* add useful bindings to the index
+like, xref stuff?  (nah)
 * DONE use tree-widget directly
 should be no real need for an intermediary like hierarchy.el, plus
 potentially more control, plus no need to disambiguate items.
