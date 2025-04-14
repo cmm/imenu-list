@@ -215,12 +215,16 @@ EVENT is the click event, ITEM is the item clocked on."
         (cons (cons (car entry) pos) kids)
       kids)))
 
+(defvar imenu-list--pos-entries)
+
 (defun imenu-list-insert-entries ()
   (setq imenu-list--line-entries
         (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
   (let ((inhibit-read-only t)
         (n-top-level-widgets 0)
-        first-widget)
+        (idx 0)
+        first-widget
+        pos-entries)
     (erase-buffer)
     (cl-labels ((sorted (items)
                   (sort items :key (lambda (item)
@@ -229,12 +233,16 @@ EVENT is the click event, ITEM is the item clocked on."
                                         ((markerp raw-pos) (or (marker-position raw-pos) -1))
                                         ((null raw-pos)    0)
                                         (t                 raw-pos))))))
-                (widgetize (item &optional (indent 0))
+                (bump-idx (pos path name)
+                  (let ((idx (cl-incf idx)))
+                    (push (cons (cl-list* name idx path) pos) pos-entries)
+                    idx))
+                (widgetize (item &optional path)
                   (cl-flet ((subalist-tag ()
                               (with-temp-buffer
                                 (let* ((name (car item))
                                        (pos  (imenu-list--item-pos item))
-                                       (face (imenu-list--get-face indent pos)))
+                                       (face (imenu-list--get-face (length path) pos)))
                                   (insert-text-button name
                                                       'face face
                                                       'follow-link "\C-m"
@@ -248,28 +256,35 @@ EVENT is the click event, ITEM is the item clocked on."
                                                                       (unless (widget-get tree :open)
                                                                         (widget-apply-action tree)))))
                                                                 (when pos
-                                                                  (imenu-list-goto-entry item))))
-                                  (buffer-substring (point-min) (point-max))))))
+                                                                  (imenu-list-goto-entry item)))
+                                                      'idx (when pos (bump-idx pos path name))))
+                                (buffer-substring (point-min) (point-max)))))
                     (apply #'widget-convert
                            (if (imenu--subalist-p item)
-                               `(tree-widget :tag ,(subalist-tag)
-                                             :args ,(mapcar (lambda (item)
-                                                              (widgetize item (1+ indent)))
-                                                            (sorted (cdr item))))
-                             `(link :tag ,(car item)
-                                    :button-face ,(imenu-list--get-face indent nil)
-                                    :format "%[%t%]\n"
-                                    :button-prefix ""
-                                    :button-suffix ""
-                                    :action ,(lambda (_ __)
-                                               (imenu-list-goto-entry item))
-                                    :follow-link "\C-m"
-                                    ))))))
+                               (let ((path (cons (cl-incf idx) path)))
+                                 (list 'tree-widget
+                                       :idx  (car path)
+                                       :tag  (subalist-tag)
+                                       :args (mapcar (lambda (item)
+                                                       (widgetize item path))
+                                                     (sorted (cdr item)))))
+                             (list 'link
+                                   :idx (bump-idx (imenu-list--item-pos item) path (car item))
+                                   :tag (car item)
+                                   :button-face (imenu-list--get-face (length path) nil)
+                                   :format "%[%t%]\n"
+                                   :button-prefix ""
+                                   :button-suffix ""
+                                   :action (lambda (_ __)
+                                             (imenu-list-goto-entry item))
+                                   :follow-link "\C-m"
+                                   ))))))
       (dolist (item (sorted imenu-list--imenu-entries))
         (let ((widget (widget-create (widgetize item))))
           (unless first-widget
             (setq first-widget widget))
           (cl-incf n-top-level-widgets))))
+    (setq-local imenu-list--pos-entries (sort pos-entries :key #'cdr))
     (when (and (= 1 n-top-level-widgets)
                (eq (widget-type first-widget) 'tree-widget))
       ;; pre-expand the sole tree widget
@@ -286,6 +301,18 @@ EVENT is the click event, ITEM is the item clocked on."
 (defun imenu-list--find-entry ()
   "Find in `imenu-list--line-entries' the entry in the current line."
   (nth (1- (line-number-at-pos)) imenu-list--line-entries))
+
+(defun imenu-list--find-pos-path ()
+  (when-let* ((buf     (get-buffer imenu-list-buffer-name))
+              (entries (with-current-buffer buf
+                         imenu-list--pos-entries)))
+    (cl-block loop
+      (let (found previous)
+        (dolist (entry entries found)
+          (if (<= (cdr entry) (point))
+              (setq found (car entry))
+            (cl-return-from loop previous))
+          (setq previous (car entry)))))))
 
 (defun imenu-list--item-pos (item)
   (or
