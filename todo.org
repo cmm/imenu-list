@@ -6,7 +6,7 @@ sure it is shown
 * TODO fix widget keymaps
 it's a wild west at present: expanders have one keymap, buttons have
 another, <tab> behavior is inconsistent and useless
-* TODO expand top level if only one root
+* DONE expand top level if only one root
 or, even better, expand enough to fill the window?
 * TODO add useful bindings to the index
 like, xref stuff?

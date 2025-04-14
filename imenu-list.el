@@ -216,7 +216,8 @@ EVENT is the click event, ITEM is the item clocked on."
 (defun imenu-list-insert-entries ()
   (setq imenu-list--line-entries
         (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
-  (let ((inhibit-read-only t))
+  (let ((inhibit-read-only t)
+        widgets)
     (erase-buffer)
     (cl-labels ((unpeal (item)
                   (if (and (consp item) (consp (car item)) (null (cdar item)))
@@ -254,9 +255,14 @@ EVENT is the click event, ITEM is the item clocked on."
                                     ))))))
       (dolist (item (unpeal imenu-list--imenu-entries))
         (let ((widget (widgetize item)))
-          (widget-create widget)
+          (push (widget-create widget) widgets)
           (unless (bolp)
-            (insert "\n"))))))
+            (insert "\n")))))
+    (when (and widgets
+               (null (cdr widgets))
+               (eq (widget-type (car widgets)) 'tree-widget))
+      ;; pre-expand the sole tree widget
+      (widget-apply-action (car widgets))))
   (goto-char (point-min)))
 
 ;;; goto entries
