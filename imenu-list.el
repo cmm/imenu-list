@@ -216,7 +216,8 @@ EVENT is the click event, ITEM is the item clocked on."
   (setq imenu-list--line-entries
         (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
   (let ((inhibit-read-only t)
-        widgets)
+        (n-top-level-widgets 0)
+        first-widget)
     (erase-buffer)
     (cl-labels ((widgetize (item &optional (indent 0))
                   (cl-flet ((subalist-tag ()
@@ -255,15 +256,14 @@ EVENT is the click event, ITEM is the item clocked on."
                                     :follow-link "\C-m"
                                     ))))))
       (dolist (item imenu-list--imenu-entries)
-        (let ((widget (widgetize item)))
-          (push (widget-create widget) widgets)
-          (unless (bolp)
-            (insert "\n")))))
-    (when (and widgets
-               (null (cdr widgets))
-               (eq (widget-type (car widgets)) 'tree-widget))
+        (let ((widget (widget-create (widgetize item))))
+          (unless first-widget
+            (setq first-widget widget))
+          (cl-incf n-top-level-widgets))))
+    (when (and (= 1 n-top-level-widgets)
+               (eq (widget-type first-widget) 'tree-widget))
       ;; pre-expand the sole tree widget
-      (widget-apply-action (car widgets))))
+      (widget-apply-action first-widget)))
   (goto-char (point-min)))
 
 ;;; goto entries
