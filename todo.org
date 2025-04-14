@@ -10,3 +10,5 @@ another, <tab> behavior is inconsistent and useless
 or, even better, expand enough to fill the window?
 * TODO add useful bindings to the index
 like, xref stuff?
+* TODO clicking inner items shrinks the subtree now
+should be an easy fix
