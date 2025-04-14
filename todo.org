@@ -10,5 +10,8 @@ another, <tab> behavior is inconsistent and useless
 or, even better, expand enough to fill the window?
 * TODO add useful bindings to the index
 like, xref stuff?
-* TODO clicking inner items shrinks the subtree now
-should be an easy fix
+* DONE use tree-widget directly
+should be no real need for an intermediary like hierarchy.el, plus
+potentially more control, plus no need to disambiguate items.
+* clicking inner items shrinks the subtree now?
+appears to be an org-mode thing, punting

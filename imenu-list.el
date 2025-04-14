@@ -45,7 +45,8 @@
 
 (require 'imenu)
 (require 'cl-lib)
-(require 'hierarchy)
+(require 'wid-edit)
+(require 'tree-widget)
 
 (defconst imenu-list-buffer-name "*Ilist*"
   "Name of the buffer that is used to display imenu entries.")
@@ -214,50 +215,40 @@ EVENT is the click event, ITEM is the item clocked on."
         (when (imenu--subalist-p entry)
           (mapcan #'imenu-list--imenu-to-line-entry (cdr entry)))))
 
-(defun imenu-list--subalist-p (entry)
-  (and (consp entry) (consp (cdr entry))))
-
 (defun imenu-list-insert-entries ()
   (setq imenu-list--line-entries
         (mapcan #'imenu-list--imenu-to-line-entry imenu-list--imenu-entries))
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (cl-flet ((unpeal (item)
-                (if (and (consp item) (consp (car item)) (null (cdar item)))
-                    (car item)
-                  item))
-              (label-inserter (box)
-                (lambda (item_ indent)
-                  (let ((item (cdr item_)))
-                    (cl-flet ((insert (subalistp &rest properties)
-                                (apply #'insert-text-button (car item)
-                                       'face (imenu-list--get-face indent subalistp)
-                                       properties)))
-                      (if (imenu-list--subalist-p item)
-                          (insert t
-                                  'action (lambda (event)
-                                            (when-let ((buffer (imenu-list--event-ilist-buffer event)))
-                                              (with-current-buffer buffer
-                                                (widget-apply (car box) :action event)))))
-                        (insert nil
-                                'follow-link t
-                                'action (lambda (event)
-                                          (imenu-list--action-goto-entry event item)))))))))
+    (cl-labels ((unpeal (item)
+                  (if (and (consp item) (consp (car item)) (null (cdar item)))
+                      (car item)
+                    item))
+                (widgetize (item &optional (indent 0))
+                  (cl-flet ((tag (subalistp)
+                              (with-temp-buffer
+                                (insert (car item))
+                                (add-text-properties (point-min) (point-max) (list 'face (imenu-list--get-face indent subalistp)))
+                                (buffer-substring (point-min) (point-max)))))
+                    (apply #'widget-convert
+                           (if (imenu--subalist-p item)
+                               `(tree-widget :tag ,(tag t)
+                                             :args ,(mapcar (lambda (item)
+                                                              (widgetize item (1+ indent)))
+                                                            (cdr item)))
+                             `(link :tag ,(car item)
+                                    :button-face ,(imenu-list--get-face indent nil)
+                                    :format "%[%t%]\n"
+                                    :button-prefix ""
+                                    :button-suffix ""
+                                    :action ,(lambda (_ __)
+                                               (imenu-list-goto-entry item))
+                                    :follow-link "\C-m"
+                                    ))))))
       (dolist (item (unpeal imenu-list--imenu-entries))
-        (if (imenu-list--subalist-p item)
-            (let* ((h (hierarchy-from-list item t
-                                           (lambda (item)
-                                             (when (imenu-list--subalist-p item)
-                                               (cdr item)))))
-                   (box (list nil))
-                   (widget (hierarchy-convert-to-tree-widget h (label-inserter box))))
-              (setf (car box) (widget-create widget)))
-          (when (consp item)
-            (insert-text-button (car item)
-                                'face (imenu-list--get-face 0 nil)
-                                'follow-link t
-                                'action (lambda (event)
-                                          (imenu-list--action-goto-entry event item)))
+        (let ((widget (widgetize item)))
+          (widget-create widget)
+          (unless (bolp)
             (insert "\n"))))))
   (goto-char (point-min)))
 
