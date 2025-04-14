@@ -218,11 +218,7 @@ EVENT is the click event, ITEM is the item clocked on."
   (let ((inhibit-read-only t)
         widgets)
     (erase-buffer)
-    (cl-labels ((unpeal (item)
-                  (if (and (consp item) (consp (car item)) (null (cdar item)))
-                      (car item)
-                    item))
-                (widgetize (item &optional (indent 0))
+    (cl-labels ((widgetize (item &optional (indent 0))
                   (cl-flet ((subalist-tag ()
                               (with-temp-buffer
                                 (let* ((name (car item))
@@ -258,7 +254,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                                (imenu-list-goto-entry item))
                                     :follow-link "\C-m"
                                     ))))))
-      (dolist (item (unpeal imenu-list--imenu-entries))
+      (dolist (item imenu-list--imenu-entries)
         (let ((widget (widgetize item)))
           (push (widget-create widget) widgets)
           (unless (bolp)
