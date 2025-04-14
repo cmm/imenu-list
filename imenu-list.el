@@ -249,7 +249,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                                       'action (lambda (event)
                                                                 (when-let ((buf (imenu-list--event-ilist-buffer event)))
                                                                   (with-current-buffer buf
-                                                                    (while (plist-get (text-properties-at (point)) 'button)
+                                                                    (while (get-char-property (point) 'button)
                                                                       (backward-char))
                                                                     (backward-char)
                                                                     (let ((tree (widget-get (widget-at) :parent)))
@@ -316,7 +316,7 @@ EVENT is the click event, ITEM is the item clocked on."
 
 (defun imenu-list--item-pos (item)
   (or
-   (when-let ((br (plist-get (text-properties-at 0 (car item)) 'breadcrumb-region)))
+   (when-let ((br (get-char-property 0 'breadcrumb-region (car item))))
      (car br))
    (cond
     ((imenu--subalist-p item) nil)
