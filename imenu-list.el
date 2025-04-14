@@ -89,9 +89,8 @@ index."
   :type 'boolean)
 
 (defcustom imenu-list-mode-line-format
-  '("%e" mode-line-front-space mode-line-mule-info mode-line-client
-    mode-line-modified mode-line-remote mode-line-frame-identification
-    (:propertize "%b" face mode-line-buffer-id) " "
+  '("%e" mode-line-front-space
+    " Imenu "
     (:eval (buffer-name imenu-list--displayed-buffer)) " "
     mode-line-end-spaces)
   "Local mode-line format for the imenu-list buffer.
