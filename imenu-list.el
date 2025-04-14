@@ -222,7 +222,14 @@ EVENT is the click event, ITEM is the item clocked on."
         (n-top-level-widgets 0)
         first-widget)
     (erase-buffer)
-    (cl-labels ((widgetize (item &optional (indent 0))
+    (cl-labels ((sorted (items)
+                  (sort items :key (lambda (item)
+                                     (let* ((raw-pos (imenu-list--item-pos item)))
+                                       (cond
+                                        ((markerp raw-pos) (or (marker-position raw-pos) -1))
+                                        ((null raw-pos)    0)
+                                        (t                 raw-pos))))))
+                (widgetize (item &optional (indent 0))
                   (cl-flet ((subalist-tag ()
                               (with-temp-buffer
                                 (let* ((name (car item))
@@ -248,7 +255,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                `(tree-widget :tag ,(subalist-tag)
                                              :args ,(mapcar (lambda (item)
                                                               (widgetize item (1+ indent)))
-                                                            (cdr item)))
+                                                            (sorted (cdr item))))
                              `(link :tag ,(car item)
                                     :button-face ,(imenu-list--get-face indent nil)
                                     :format "%[%t%]\n"
@@ -258,7 +265,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                                (imenu-list-goto-entry item))
                                     :follow-link "\C-m"
                                     ))))))
-      (dolist (item imenu-list--imenu-entries)
+      (dolist (item (sorted imenu-list--imenu-entries))
         (let ((widget (widget-create (widgetize item))))
           (unless first-widget
             (setq first-widget widget))
