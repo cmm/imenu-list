@@ -130,9 +130,9 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   "Face for outermost imenu-list entries (depth 0)."
   :group 'imenu-list)
 
-(defface imenu-list-entry-subalist-face-0
+(defface imenu-list-entry-clickable-tag-face-0
   '((t :inherit imenu-list-entry-face-0
-       :weight bold))
+       :underline t))
   "Face for subalist entries with depth 0."
   :group 'imenu-list)
 
@@ -141,9 +141,9 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   "Face for imenu-list entries with depth 1."
   :group 'imenu-list)
 
-(defface imenu-list-entry-subalist-face-1
+(defface imenu-list-entry-clickable-tag-face-1
   '((t :inherit imenu-list-entry-face-1
-       :weight bold))
+       :underline t))
   "Face for subalist entries with depth 1."
   :group 'imenu-list)
 
@@ -152,9 +152,9 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   "Face for imenu-list entries with depth 2."
   :group 'imenu-list)
 
-(defface imenu-list-entry-subalist-face-2
+(defface imenu-list-entry-clickable-tag-face-2
   '((t :inherit imenu-list-entry-face-2
-       :weight bold))
+       :underline t))
   "Face for subalist entries with depth 2."
   :group 'imenu-list)
 
@@ -163,23 +163,21 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   "Face for imenu-list entries with depth 3."
   :group 'imenu-list)
 
-(defface imenu-list-entry-subalist-face-3
+(defface imenu-list-entry-clickable-tag-face-3
   '((t :inherit imenu-list-entry-face-3
-       :weight bold))
+       :underline t))
   "Face for subalist entries with depth 0."
   :group 'imenu-list)
 
-(defun imenu-list--get-face (depth subalistp)
+(defun imenu-list--get-face (depth clickablep)
   "Get face for entry.
-DEPTH is the depth of the entry in the list.
-SUBALISTP non-nil means that there are more entries \"under\" the
-current entry (current entry is a \"father\")."
+DEPTH is the depth of the entry in the list."
   (cl-case depth
-    (0 (if subalistp 'imenu-list-entry-subalist-face-0 'imenu-list-entry-face-0))
-    (1 (if subalistp 'imenu-list-entry-subalist-face-1 'imenu-list-entry-face-1))
-    (2 (if subalistp 'imenu-list-entry-subalist-face-2 'imenu-list-entry-face-2))
-    (3 (if subalistp 'imenu-list-entry-subalist-face-3 'imenu-list-entry-face-3))
-    (t (if subalistp 'imenu-list-entry-subalist-face-3 'imenu-list-entry-face-2))))
+    (0 (if clickablep 'imenu-list-entry-clickable-tag-face-0 'imenu-list-entry-face-0))
+    (1 (if clickablep 'imenu-list-entry-clickable-tag-face-1 'imenu-list-entry-face-1))
+    (2 (if clickablep 'imenu-list-entry-clickable-tag-face-2 'imenu-list-entry-face-2))
+    (3 (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-3))
+    (t (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-2))))
 
 ;;; collect entries
 
@@ -225,14 +223,23 @@ EVENT is the click event, ITEM is the item clocked on."
                       (car item)
                     item))
                 (widgetize (item &optional (indent 0))
-                  (cl-flet ((tag (subalistp)
+                  (cl-flet ((tag ()
                               (with-temp-buffer
-                                (insert (car item))
-                                (add-text-properties (point-min) (point-max) (list 'face (imenu-list--get-face indent subalistp)))
-                                (buffer-substring (point-min) (point-max)))))
+                                (let* ((name (car item))
+                                       (br (plist-get (text-properties-at 0 name) 'breadcrumb-region))
+                                       (face (imenu-list--get-face indent br)))
+                                  (if br
+                                      (insert-text-button name
+                                                          'face face
+                                                          'follow-link "\C-m"
+                                                          'action (lambda (_)
+                                                                    (imenu-list-goto-entry (cons name (car br)))))
+                                    (insert name)
+                                    (add-text-properties (point-min) (point-max) `(face ,face)))
+                                  (buffer-substring (point-min) (point-max))))))
                     (apply #'widget-convert
                            (if (imenu--subalist-p item)
-                               `(tree-widget :tag ,(tag t)
+                               `(tree-widget :tag ,(tag)
                                              :args ,(mapcar (lambda (item)
                                                               (widgetize item (1+ indent)))
                                                             (cdr item)))
