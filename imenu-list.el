@@ -223,23 +223,29 @@ EVENT is the click event, ITEM is the item clocked on."
                       (car item)
                     item))
                 (widgetize (item &optional (indent 0))
-                  (cl-flet ((tag ()
+                  (cl-flet ((subalist-tag ()
                               (with-temp-buffer
                                 (let* ((name (car item))
                                        (br (plist-get (text-properties-at 0 name) 'breadcrumb-region))
                                        (face (imenu-list--get-face indent br)))
-                                  (if br
-                                      (insert-text-button name
-                                                          'face face
-                                                          'follow-link "\C-m"
-                                                          'action (lambda (_)
-                                                                    (imenu-list-goto-entry (cons name (car br)))))
-                                    (insert name)
-                                    (add-text-properties (point-min) (point-max) `(face ,face)))
+                                  (insert-text-button name
+                                                      'face face
+                                                      'follow-link "\C-m"
+                                                      'action (lambda (event)
+                                                                (when-let ((buf (imenu-list--event-ilist-buffer event)))
+                                                                  (with-current-buffer buf
+                                                                    (while (plist-get (text-properties-at (point)) 'button)
+                                                                      (backward-char))
+                                                                    (backward-char)
+                                                                    (let ((tree (widget-get (widget-at) :parent)))
+                                                                      (unless (widget-get tree :open)
+                                                                        (widget-apply-action tree)))))
+                                                                (when br
+                                                                  (imenu-list-goto-entry (cons name (car br))))))
                                   (buffer-substring (point-min) (point-max))))))
                     (apply #'widget-convert
                            (if (imenu--subalist-p item)
-                               `(tree-widget :tag ,(tag)
+                               `(tree-widget :tag ,(subalist-tag)
                                              :args ,(mapcar (lambda (item)
                                                               (widgetize item (1+ indent)))
                                                             (cdr item)))
