@@ -223,47 +223,45 @@ EVENT is the click event, ITEM is the item clocked on."
                     (push (cons (cl-list* name idx path) pos) pos-entries)
                     idx))
                 (widgetize (item &optional path)
-                  (cl-flet ((subalist-tag (path)
-                              (with-temp-buffer
-                                (let* ((name (car item))
-                                       (pos  (imenu-list--item-pos item))
-                                       (face (imenu-list--get-face (length path) pos)))
-                                  (insert-text-button name
-                                                      'face face
-                                                      'follow-link "\C-m"
-                                                      'action (lambda (event)
-                                                                (when-let ((buf (imenu-list--event-ilist-buffer event)))
-                                                                  (with-current-buffer buf
-                                                                    (while (get-char-property (point) 'button)
-                                                                      (backward-char))
-                                                                    (backward-char)
-                                                                    (let ((tree (widget-get (widget-at) :parent)))
-                                                                      (unless (widget-get tree :open)
-                                                                        (widget-apply-action tree)))))
-                                                                (when pos
-                                                                  (imenu-list-goto-entry item)))
-                                                      'idx (when pos (bump-idx pos path name))))
-                                (buffer-substring (point-min) (point-max)))))
-                    (apply #'widget-convert
-                           (if (imenu--subalist-p item)
-                               (let ((path (cons (cl-incf idx) path)))
-                                 (list 'tree-widget
-                                       :idx  (car path)
-                                       :tag  (subalist-tag path)
-                                       :args (mapcar (lambda (item)
-                                                       (widgetize item path))
-                                                     (sorted (cdr item)))))
-                             (list 'link
-                                   :idx (bump-idx (imenu-list--item-pos item) path (car item))
-                                   :tag (car item)
-                                   :button-face (imenu-list--get-face (length path) nil)
-                                   :format "%[%t%]\n"
-                                   :button-prefix ""
-                                   :button-suffix ""
-                                   :action (lambda (_ __)
-                                             (imenu-list-goto-entry item))
-                                   :follow-link "\C-m"
-                                   ))))))
+                  (cl-labels ((link (idx tag face action)
+                                (widget-convert 'link
+                                                :idx idx
+                                                :tag tag
+                                                :button-face face
+                                                :format "%[%t%]\n"
+                                                :button-prefix ""
+                                                :button-suffix ""
+                                                :action action
+                                                :follow-link "\C-m"))
+                              (subalist-node (path)
+                                (let ((name (car item))
+                                      (pos  (imenu-list--item-pos item)))
+                                  (link (when pos (bump-idx pos path name))
+                                        name
+                                        (imenu-list--get-face (1- (length path)) pos)
+                                        (lambda (_ event)
+                                          (when-let ((buf (imenu-list--event-ilist-buffer event)))
+                                            (with-current-buffer buf
+                                              (while (get-char-property (point) 'button)
+                                                (backward-char))
+                                              (backward-char)
+                                              (let ((tree (widget-get (widget-at) :parent)))
+                                                (widget-apply-action tree))))
+                                          (when pos
+                                            (imenu-list-goto-entry item)))))))
+                    (if (imenu--subalist-p item)
+                        (let ((path (cons (cl-incf idx) path)))
+                          (widget-convert 'tree-widget
+                                          :idx  (car path)
+                                          :node (subalist-node path)
+                                          :args (mapcar (lambda (item)
+                                                          (widgetize item path))
+                                                        (sorted (cdr item)))))
+                      (link (bump-idx (imenu-list--item-pos item) path (car item))
+                            (car item)
+                            (imenu-list--get-face (length path) nil)
+                            (lambda (_ __)
+                              (imenu-list-goto-entry item)))))))
       (dolist (item (sorted imenu-list--imenu-entries))
         (let ((widget (widget-create (widgetize item))))
           (unless first-widget
@@ -357,15 +355,18 @@ continue with the regular logic to find a translator function."
   (when-let ((path (imenu-list--find-pos-path)))
     (cl-labels ((rec (path)
                   (let ((idx (car path)))
-                    (if (stringp idx)
-                        (hl-line-mode 1)
-                      (skip-to-button)
-                      (while (not (at-idx idx))
-                        (forward-line)
-                        (skip-to-button))
+                    (cond
+                     ((stringp idx)
+                      (cl-assert (string= (buffer-substring (point) (+ (point) (length idx))) idx))
+                      (hl-line-mode 1))
+                     (t
+                      (while (not (progn
+                                    (skip-to-button)
+                                    (at-idx idx)))
+                        (forward-line))
                       (let ((widget (interesting-widget (widget-at))))
                         (cond
-                         ((or (null widget) (eq (widget-type widget) 'link))
+                         ((eq (widget-type widget) 'link)
                           (rec (cdr path)))
                          ((eq (widget-type widget) 'tree-widget)
                           ;; first skip to the label
@@ -379,20 +380,18 @@ continue with the regular logic to find a translator function."
                               (save-excursion
                                 (widget-apply-action widget)))
                             (forward-line)
-                            (rec (cdr path)))))))))
+                            (rec (cdr path))))))))))
                 (skip-to-button ()
                   (while (or (not (get-char-property (point) 'button))
                              (eq (widget-type (widget-at)) 'tree-widget-leaf-icon))
                     (forward-char)))
                 (idx-of (widget)
                   (or (widget-get widget :idx)
-                      (widget-get widget 'idx)
                       (when-let ((parent (widget-get widget :parent)))
                         (idx-of parent))))
                 (at-idx (idx)
-                  (let ((idx-here (or (get-char-property (point) 'idx)
-                                      (when-let ((widget (widget-at)))
-                                        (idx-of widget)))))
+                  (let ((idx-here (when-let ((widget (widget-at)))
+                                    (idx-of widget))))
                     (eql idx-here idx)))
                 (interesting-widget (widget)
                   (when widget
