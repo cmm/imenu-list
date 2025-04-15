@@ -206,9 +206,7 @@ EVENT is the click event, ITEM is the item clocked on."
 
 (defun imenu-list-insert-entries ()
   (let ((inhibit-read-only t)
-        (n-top-level-widgets 0)
         (idx 0)
-        first-widget
         pos-entries)
     (erase-buffer)
     (cl-labels ((sorted (items)
@@ -263,15 +261,8 @@ EVENT is the click event, ITEM is the item clocked on."
                             (lambda (_ __)
                               (imenu-list-goto-entry item)))))))
       (dolist (item (sorted imenu-list--imenu-entries))
-        (let ((widget (widget-create (widgetize item))))
-          (unless first-widget
-            (setq first-widget widget))
-          (cl-incf n-top-level-widgets))))
-    (setq imenu-list--pos-entries (sort pos-entries :key #'cdr))
-    (when (and (= 1 n-top-level-widgets)
-               (eq (widget-type first-widget) 'tree-widget))
-      ;; pre-expand the sole tree widget
-      (widget-apply-action first-widget)))
+        (widget-create (widgetize item))))
+    (setq imenu-list--pos-entries (sort pos-entries :key #'cdr)))
   (goto-char (point-min)))
 
 ;;; goto entries
