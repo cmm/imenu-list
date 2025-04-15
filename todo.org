@@ -1,21 +1,14 @@
-* fix source location indication
-** DONE sort out the mapping in the first place
-** DONE expand on demand
-that is, if the index item for current source location is hidden, make
-sure it is shown
-* DONE fix widget keymaps
-it's a wild west at present: expanders have one keymap, buttons have
-another, <tab> behavior is inconsistent and useless
-
-(made tree tags normal links, seems OK now?)
-* DONE expand top level if only one root
-or, even better, expand enough to fill the window?
-* add useful bindings to the index
-like, xref stuff?  (nah)
-* DONE use tree-widget directly
-should be no real need for an intermediary like hierarchy.el, plus
-potentially more control, plus no need to disambiguate items.
-* clicking inner items shrinks the subtree now?
-appears to be an org-mode thing, punting
-* TODO fix performance
-it sucks
+* TODO add more actions
+like bind the show-noselect thing to something.
+also the goto-and-toggle-tree pun is kinda ugly.
+* TODO lower-bound is an embarrassment
+also rename it
+* TODO no need for the ugly forced-root path grafting
+just look if imenu-alist is one item
+* TODO crawling the buffer line-by-line sucks
+should record drawn widget positions, after I figure out which widget
+method to wrap for that
+* fix performance
+it sucks, but according to profile it's
+Imenu/Eglot/over-eager-LSP-server (like Nixd with all-packages.nix)
+that sucks and not us, so

@@ -204,6 +204,8 @@ EVENT is the click event, ITEM is the item clocked on."
 
 (defvar imenu-list--pos-entries nil)
 
+(defvar imenu-list--forced-top-level nil)
+
 (defun imenu-list-insert-entries ()
   (let ((inhibit-read-only t)
         (idx 0)
@@ -220,18 +222,18 @@ EVENT is the click event, ITEM is the item clocked on."
                   (let ((idx (cl-incf idx)))
                     (push (cons (cl-list* name idx path) pos) pos-entries)
                     idx))
+                (link (idx tag face action)
+                  (widget-convert 'link
+                                  :idx idx
+                                  :tag tag
+                                  :button-face face
+                                  :format "%[%t%]\n"
+                                  :button-prefix ""
+                                  :button-suffix ""
+                                  :action action
+                                  :follow-link "\C-m"))
                 (widgetize (item &optional path)
-                  (cl-labels ((link (idx tag face action)
-                                (widget-convert 'link
-                                                :idx idx
-                                                :tag tag
-                                                :button-face face
-                                                :format "%[%t%]\n"
-                                                :button-prefix ""
-                                                :button-suffix ""
-                                                :action action
-                                                :follow-link "\C-m"))
-                              (subalist-node (path)
+                  (cl-labels ((subalist-node (path)
                                 (let ((name (car item))
                                       (pos  (imenu-list--item-pos item)))
                                   (link (when pos (bump-idx pos path name))
@@ -254,9 +256,23 @@ EVENT is the click event, ITEM is the item clocked on."
                             (imenu-list--get-face (length path) nil)
                             (lambda (_ __)
                               (imenu-list-goto-entry item)))))))
-      (dolist (item (sorted imenu-list--imenu-entries))
-        (widget-create (widgetize item))))
-    (setq imenu-list--pos-entries (sort pos-entries :key #'cdr)))
+      (let* ((top-level-widgets (mapcar #'widgetize (sorted imenu-list--imenu-entries)))
+             (top-level-widget  (cond
+                                 ((cdr top-level-widgets)
+                                  (setq imenu-list--forced-top-level -1)
+                                  (widget-convert 'tree-widget
+                                                  :idx  -1
+                                                  :node (link -2
+                                                              "*root*"
+                                                              'imenu-list-entry-clickable-tag-face-0
+                                                              (lambda (widget _)
+                                                                (widget-apply-action (widget-get widget :parent))))
+                                                  :args top-level-widgets))
+                                 (t
+                                  (setq imenu-list--forced-top-level nil)
+                                  (car top-level-widgets)))))
+        (widget-create top-level-widget)))
+    (setq imenu-list--pos-entries (sort (vconcat pos-entries) :key #'cdr :in-place t)))
   (goto-char (point-min)))
 
 ;;; goto entries
@@ -266,17 +282,35 @@ EVENT is the click event, ITEM is the item clocked on."
   :group 'imenu-list
   :type 'hook)
 
+(defun lower-bound (vec key x)
+  (cond
+   ((<  x (funcall key (elt vec 0)))
+    nil)
+   ((>= x (funcall key (elt vec (1- (length vec)))))
+    (elt vec (1- (length vec))))
+   (t
+    (let ((from 0)
+          (to   (1- (length vec)))
+          (prev 0))
+      (while (> (- to from) 1)
+        (let ((lower (funcall key (elt vec from)))
+              (upper (funcall key (elt vec to))))
+          (let* ((half-way (let ((i (/ (+ from to) 2)))
+                             (if (= i from) (1+ i) i)))
+                 (middle   (funcall key (elt vec half-way))))
+            (if (> middle x)
+                (setq to half-way)
+              (setq from half-way))))
+        (setq prev from))
+      (elt vec prev)))))
+
 (defun imenu-list--find-pos-path ()
-  (let ((point-pos  (point-marker))
-        (get-pos-fn (imenu-list-position-translator)))
-    (cl-block loop
-      (let (found previous)
-        (dolist (entry imenu-list--pos-entries found)
-          (let ((entry-pos (funcall get-pos-fn (cdr entry))))
-            (if (<= entry-pos point-pos)
-                (setq found (car entry))
-              (cl-return-from loop previous))
-            (setq previous (car entry))))))))
+  (let ((get-pos-fn (imenu-list-position-translator)))
+    (when-let ((entry (lower-bound imenu-list--pos-entries
+                                   (lambda (elt)
+                                     (funcall get-pos-fn (cdr elt)))
+                                   (point-marker))))
+      (car entry))))
 
 (defun imenu-list--item-pos (item)
   (or
@@ -385,7 +419,10 @@ continue with the regular logic to find a translator function."
                       (interesting-widget (widget-get widget :parent))))))
       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
         (goto-char (point-min))
-        (rec (reverse path))))))
+        (rec (let ((path (reverse path)))
+               (if imenu-list--forced-top-level
+                   (cons imenu-list--forced-top-level path)
+                 path)))))))
 
 ;;; window display settings
 
