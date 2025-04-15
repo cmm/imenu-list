@@ -237,14 +237,8 @@ EVENT is the click event, ITEM is the item clocked on."
                                   (link (when pos (bump-idx pos path name))
                                         name
                                         (imenu-list--get-face (1- (length path)) pos)
-                                        (lambda (_ event)
-                                          (when-let ((buf (imenu-list--event-ilist-buffer event)))
-                                            (with-current-buffer buf
-                                              (while (get-char-property (point) 'button)
-                                                (backward-char))
-                                              (backward-char)
-                                              (let ((tree (widget-get (widget-at) :parent)))
-                                                (widget-apply-action tree))))
+                                        (lambda (widget _)
+                                          (widget-apply-action (widget-get widget :parent))
                                           (when pos
                                             (imenu-list-goto-entry item)))))))
                     (if (imenu--subalist-p item)
