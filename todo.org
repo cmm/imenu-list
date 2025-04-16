@@ -1,8 +1,6 @@
 * TODO add more actions
 like bind the show-noselect thing to something.
 also the goto-and-toggle-tree pun is kinda ugly.
-* TODO lower-bound is an embarrassment
-also rename it
 * TODO no need for the ugly forced-root path grafting
 just look if imenu-alist is one item
 * TODO crawling the buffer line-by-line sucks

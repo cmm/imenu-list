@@ -282,35 +282,37 @@ EVENT is the click event, ITEM is the item clocked on."
   :group 'imenu-list
   :type 'hook)
 
-(defun lower-bound (vec key x)
-  (cond
-   ((<  x (funcall key (elt vec 0)))
-    nil)
-   ((>= x (funcall key (elt vec (1- (length vec)))))
-    (elt vec (1- (length vec))))
-   (t
-    (let ((from 0)
-          (to   (1- (length vec)))
-          (prev 0))
+(cl-defun imenu-list--lower-bound (vec x &key (key #'identity))
+  (let (from to lower upper found)
+    (cl-labels ((key-at (idx)
+                  (funcall key (elt vec idx)))
+                (refresh (new-from new-to &optional new-lower new-upper)
+                  (setq from  new-from
+                        lower (or new-lower (key-at from))
+                        to    new-to
+                        upper (or new-upper (key-at to))
+                        found from)))
+      (refresh 0 (1- (length vec)))
+
+      (when (<  x lower)
+        (cl-return-from imenu-list--lower-bound nil))
+      (when (>= x upper)
+        (cl-return-from imenu-list--lower-bound to))
+
       (while (> (- to from) 1)
-        (let ((lower (funcall key (elt vec from)))
-              (upper (funcall key (elt vec to))))
-          (let* ((half-way (let ((i (/ (+ from to) 2)))
-                             (if (= i from) (1+ i) i)))
-                 (middle   (funcall key (elt vec half-way))))
-            (if (> middle x)
-                (setq to half-way)
-              (setq from half-way))))
-        (setq prev from))
-      (elt vec prev)))))
+        (let* ((half-way (/ (+ from to) 2))
+               (middle   (key-at half-way)))
+          (if (> middle x)
+              (refresh from half-way lower middle)
+            (refresh half-way to middle upper)))))
+    found))
 
 (defun imenu-list--find-pos-path ()
-  (let ((get-pos-fn (imenu-list-position-translator)))
-    (when-let ((entry (lower-bound imenu-list--pos-entries
-                                   (lambda (elt)
-                                     (funcall get-pos-fn (cdr elt)))
-                                   (point-marker))))
-      (car entry))))
+  (let ((get-pos (imenu-list-position-translator)))
+    (when-let ((idx (imenu-list--lower-bound imenu-list--pos-entries
+                                             (point-marker)
+                                             :key (lambda (elt) (funcall get-pos (cdr elt))))))
+      (car (elt imenu-list--pos-entries idx)))))
 
 (defun imenu-list--item-pos (item)
   (or
