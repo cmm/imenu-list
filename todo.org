@@ -1,9 +1,6 @@
 * TODO add more actions
 like bind the show-noselect thing to something.
 also the goto-and-toggle-tree pun is kinda ugly.
-* TODO crawling the buffer line-by-line sucks
-should record drawn widget positions, after I figure out which widget
-method to wrap for that
 * fix performance
 it sucks, but according to profile it's
 Imenu/Eglot/over-eager-LSP-server (like Nixd with all-packages.nix)

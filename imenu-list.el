@@ -213,13 +213,25 @@ EVENT is the click event, ITEM is the item clocked on."
                       (1 (if clickablep 'imenu-list-entry-clickable-tag-face-1 'imenu-list-entry-face-1))
                       (2 (if clickablep 'imenu-list-entry-clickable-tag-face-2 'imenu-list-entry-face-2))
                       (3 (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-3)))))
-                (bump-idx (pos path name)
-                  (let ((idx (cl-incf idx)))
-                    (push (cons (cl-list* name idx path) pos) pos-entries)
-                    idx))
-                (link (idx tag face action)
-                  (widget-convert 'link
-                                  :idx idx
+                (bump-idx (&optional pos path name)
+                  (let ((backlink (list (cl-incf idx))))
+                    (when pos
+                      (push (cons (cl-list* name backlink path) pos) pos-entries))
+                    backlink))
+                (tracked-widget (backlink &rest args)
+                  (let* ((spec (apply #'widget-convert args)))
+                    (prog1 spec
+                      (when backlink
+                        (let ((create (widget-get spec :create)))
+                          (widget-put spec :create (lambda (spec)
+                                                     (let ((pos (point)))
+                                                       (funcall create spec)
+                                                       (let ((widget (widget-at pos)))
+                                                         (while (not (member (widget-type widget) '(link tree-widget)))
+                                                           (setq widget (widget-get widget :parent)))
+                                                         (setf (cdr backlink) widget))))))))))
+                (link (backlink tag face action)
+                  (tracked-widget backlink 'link
                                   :tag tag
                                   :button-face face
                                   :format "%[%t%]\n"
@@ -239,9 +251,9 @@ EVENT is the click event, ITEM is the item clocked on."
                                           (when pos
                                             (imenu-list-goto-entry item)))))))
                     (if (imenu--subalist-p item)
-                        (let ((path (cons (cl-incf idx) path)))
-                          (widget-convert 'tree-widget
-                                          :idx  (car path)
+                        (let* ((backlink (bump-idx))
+                               (path (cons backlink path)))
+                          (tracked-widget backlink 'tree-widget
                                           :node (subalist-node path)
                                           :args (mapcar (lambda (item)
                                                           (widgetize item path))
@@ -254,17 +266,18 @@ EVENT is the click event, ITEM is the item clocked on."
       (let* ((entries   (sorted imenu-list--imenu-entries))
              path
              (root-tree (when (cdr entries)
-                          (setq path (list idx))
-                          (widget-convert 'tree-widget
-                                          :idx  idx
-                                          :node (link nil
-                                                      "*root*"
-                                                      'imenu-list-entry-face-0
-                                                      (lambda (widget event)
-                                                        (widget-parent-action widget event)))
-                                          :args (mapcar (lambda (entry)
-                                                          (widgetize entry path))
-                                                        entries)))))
+                          (let ((backlink (list idx)))
+                            (setq path (list backlink))
+                            (tracked-widget backlink 'tree-widget
+                                            :idx  idx
+                                            :node (link (bump-idx)
+                                                        "*root*"
+                                                        'imenu-list-entry-face-0
+                                                        (lambda (widget event)
+                                                          (widget-parent-action widget event)))
+                                            :args (mapcar (lambda (entry)
+                                                            (widgetize entry path))
+                                                          entries))))))
         (widget-create (or root-tree
                            (widgetize (car entries) path)))
         (widget-setup)))
@@ -371,53 +384,73 @@ continue with the regular logic to find a translator function."
 (defun imenu-list--hl-current-entry ()
   (when-let ((path (imenu-list--find-pos-path)))
     (cl-labels ((rec (path)
-                  (let ((idx (car path)))
+                  (let ((backlink (car path)))
                     (cond
-                     ((stringp idx)
-                      (cl-assert (string= (buffer-substring (point) (+ (point) (length idx))) idx))
+                     ((stringp backlink)
+                      (cl-assert (string= (buffer-substring (point) (+ (point) (length backlink))) backlink))
                       (hl-line-mode 1))
                      (t
-                      (while (not (progn
-                                    (skip-to-button)
-                                    (at-idx idx)))
-                        (forward-line))
-                      (let ((widget (interesting-widget (widget-at))))
-                        (cond
-                         ((eq (widget-type widget) 'link)
-                          (rec (cdr path)))
-                         ((eq (widget-type widget) 'tree-widget)
-                          ;; first skip to the label
-                          (while (get-char-property (point) 'button)
-                            (forward-char))
-                          (while (not (get-char-property (point) 'button))
-                            (forward-char))
-                          (if (at-idx (cadr path))
-                              (rec (cdr path))
-                            (unless (widget-get widget :open)
-                              (save-excursion
-                                (widget-apply-action widget)))
-                            (forward-line)
-                            (rec (cdr path))))))))))
-                (skip-to-button ()
-                  (while (or (not (get-char-property (point) 'button))
-                             (eq (widget-type (widget-at)) 'tree-widget-leaf-icon))
-                    (forward-char)))
-                (idx-of (widget)
-                  (or (widget-get widget :idx)
-                      (when-let ((parent (widget-get widget :parent)))
-                        (idx-of parent))))
-                (at-idx (idx)
-                  (let ((idx-here (when-let ((widget (widget-at)))
-                                    (idx-of widget))))
-                    (eql idx-here idx)))
-                (interesting-widget (widget)
-                  (when widget
-                    (if (member (widget-type widget) '(tree-widget link))
-                        widget
-                      (interesting-widget (widget-get widget :parent))))))
+                      (let ((widget (cdr backlink)))
+                        (cl-ecase (widget-type widget)
+                          (link
+                           (goto-char (widget-get widget :from)))
+                          (tree-widget
+                           (unless (widget-get widget :open)
+                             (widget-apply-action widget))))
+                        (rec (cdr path))))))))
       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
-        (goto-char (point-min))
         (rec (reverse path))))))
+
+;; (defun imenu-list--hl-current-entry ()
+;;   (when-let ((path (imenu-list--find-pos-path)))
+;;     (cl-labels ((rec (path)
+;;                   (let ((idx (car path)))
+;;                     (cond
+;;                      ((stringp idx)
+;;                       (cl-assert (string= (buffer-substring (point) (+ (point) (length idx))) idx))
+;;                       (hl-line-mode 1))
+;;                      (t
+;;                       (while (not (progn
+;;                                     (skip-to-button)
+;;                                     (at-idx idx)))
+;;                         (forward-line))
+;;                       (let ((widget (interesting-widget (widget-at))))
+;;                         (cond
+;;                          ((eq (widget-type widget) 'link)
+;;                           (rec (cdr path)))
+;;                          ((eq (widget-type widget) 'tree-widget)
+;;                           ;; first skip to the label
+;;                           (while (get-char-property (point) 'button)
+;;                             (forward-char))
+;;                           (while (not (get-char-property (point) 'button))
+;;                             (forward-char))
+;;                           (if (at-idx (cadr path))
+;;                               (rec (cdr path))
+;;                             (unless (widget-get widget :open)
+;;                               (save-excursion
+;;                                 (widget-apply-action widget)))
+;;                             (forward-line)
+;;                             (rec (cdr path))))))))))
+;;                 (skip-to-button ()
+;;                   (while (or (not (get-char-property (point) 'button))
+;;                              (eq (widget-type (widget-at)) 'tree-widget-leaf-icon))
+;;                     (forward-char)))
+;;                 (idx-of (widget)
+;;                   (or (widget-get widget :idx)
+;;                       (when-let ((parent (widget-get widget :parent)))
+;;                         (idx-of parent))))
+;;                 (at-idx (idx)
+;;                   (let ((idx-here (when-let ((widget (widget-at)))
+;;                                     (idx-of widget))))
+;;                     (eql idx-here idx)))
+;;                 (interesting-widget (widget)
+;;                   (when widget
+;;                     (if (member (widget-type widget) '(tree-widget link))
+;;                         widget
+;;                       (interesting-widget (widget-get widget :parent))))))
+;;       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
+;;         (goto-char (point-min))
+;;         (rec (reverse path))))))
 
 ;;; window display settings
 
@@ -626,7 +659,9 @@ If `global-imenu-list-mode' is already disabled, just call `quit-window'."
   (imenu-list-stop-timer)
   (setq imenu-list--timer
         (run-with-idle-timer imenu-list-idle-update-delay t
-                             #'imenu-list-update)))
+                             (lambda ()
+                               (let ((non-essential t))
+                                (imenu-list-update))))))
 
 (defun imenu-list-stop-timer ()
   "Stop timer to auto-update imenu-list index and window."
