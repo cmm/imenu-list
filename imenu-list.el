@@ -234,8 +234,8 @@ EVENT is the click event, ITEM is the item clocked on."
                                   (link (when pos (bump-idx pos path name))
                                         name
                                         (get-face (cdr path) pos)
-                                        (lambda (widget _)
-                                          (widget-apply-action (widget-get widget :parent))
+                                        (lambda (widget event)
+                                          (widget-parent-action widget event)
                                           (when pos
                                             (imenu-list-goto-entry item)))))))
                     (if (imenu--subalist-p item)
@@ -260,13 +260,14 @@ EVENT is the click event, ITEM is the item clocked on."
                                           :node (link nil
                                                       "*root*"
                                                       'imenu-list-entry-face-0
-                                                      (lambda (widget _)
-                                                        (widget-apply-action (widget-get widget :parent))))
+                                                      (lambda (widget event)
+                                                        (widget-parent-action widget event)))
                                           :args (mapcar (lambda (entry)
                                                           (widgetize entry path))
                                                         entries)))))
         (widget-create (or root-tree
-                           (widgetize (car entries) path)))))
+                           (widgetize (car entries) path)))
+        (widget-setup)))
     (setq imenu-list--pos-entries (sort (vconcat pos-entries) :key #'cdr :in-place t)))
   (goto-char (point-min)))
 
