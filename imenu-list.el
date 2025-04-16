@@ -163,16 +163,6 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
   "Face for subalist entries with depth 0."
   :group 'imenu-list)
 
-(defun imenu-list--get-face (depth clickablep)
-  "Get face for entry.
-DEPTH is the depth of the entry in the list."
-  (cl-case depth
-    (0 (if clickablep 'imenu-list-entry-clickable-tag-face-0 'imenu-list-entry-face-0))
-    (1 (if clickablep 'imenu-list-entry-clickable-tag-face-1 'imenu-list-entry-face-1))
-    (2 (if clickablep 'imenu-list-entry-clickable-tag-face-2 'imenu-list-entry-face-2))
-    (3 (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-3))
-    (t (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-2))))
-
 ;;; collect entries
 
 (defun imenu-list-rescan-imenu ()
@@ -204,8 +194,6 @@ EVENT is the click event, ITEM is the item clocked on."
 
 (defvar imenu-list--pos-entries nil)
 
-(defvar imenu-list--forced-top-level nil)
-
 (defun imenu-list-insert-entries ()
   (let ((inhibit-read-only t)
         (idx 0)
@@ -218,6 +206,16 @@ EVENT is the click event, ITEM is the item clocked on."
                                         ((markerp raw-pos) (or (marker-position raw-pos) -1))
                                         ((null raw-pos)    0)
                                         (t                 raw-pos))))))
+                (get-face (path clickablep)
+                  (let ((depth (length path)))
+                    (when (eql (car path) 0)
+                      (cl-decf depth))
+                    (cl-case depth
+                      (0 (if clickablep 'imenu-list-entry-clickable-tag-face-0 'imenu-list-entry-face-0))
+                      (1 (if clickablep 'imenu-list-entry-clickable-tag-face-1 'imenu-list-entry-face-1))
+                      (2 (if clickablep 'imenu-list-entry-clickable-tag-face-2 'imenu-list-entry-face-2))
+                      (3 (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-3))
+                      (t (if clickablep 'imenu-list-entry-clickable-tag-face-3 'imenu-list-entry-face-2)))))
                 (bump-idx (pos path name)
                   (let ((idx (cl-incf idx)))
                     (push (cons (cl-list* name idx path) pos) pos-entries)
@@ -232,13 +230,13 @@ EVENT is the click event, ITEM is the item clocked on."
                                   :button-suffix ""
                                   :action action
                                   :follow-link "\C-m"))
-                (widgetize (item &optional path)
+                (widgetize (item path)
                   (cl-labels ((subalist-node (path)
                                 (let ((name (car item))
                                       (pos  (imenu-list--item-pos item)))
                                   (link (when pos (bump-idx pos path name))
                                         name
-                                        (imenu-list--get-face (1- (length path)) pos)
+                                        (get-face (cdr path) pos)
                                         (lambda (widget _)
                                           (widget-apply-action (widget-get widget :parent))
                                           (when pos
@@ -253,25 +251,25 @@ EVENT is the click event, ITEM is the item clocked on."
                                                         (sorted (cdr item)))))
                       (link (bump-idx (imenu-list--item-pos item) path (car item))
                             (car item)
-                            (imenu-list--get-face (length path) nil)
+                            (get-face path nil)
                             (lambda (_ __)
                               (imenu-list-goto-entry item)))))))
-      (let* ((top-level-widgets (mapcar #'widgetize (sorted imenu-list--imenu-entries)))
-             (top-level-widget  (cond
-                                 ((cdr top-level-widgets)
-                                  (setq imenu-list--forced-top-level -1)
-                                  (widget-convert 'tree-widget
-                                                  :idx  -1
-                                                  :node (link -2
-                                                              "*root*"
-                                                              'imenu-list-entry-clickable-tag-face-0
-                                                              (lambda (widget _)
-                                                                (widget-apply-action (widget-get widget :parent))))
-                                                  :args top-level-widgets))
-                                 (t
-                                  (setq imenu-list--forced-top-level nil)
-                                  (car top-level-widgets)))))
-        (widget-create top-level-widget)))
+      (let* ((entries   (sorted imenu-list--imenu-entries))
+             path
+             (root-tree (when (cdr entries)
+                          (setq path (list idx))
+                          (widget-convert 'tree-widget
+                                          :idx  idx
+                                          :node (link nil
+                                                      "*root*"
+                                                      'imenu-list-entry-face-0
+                                                      (lambda (widget _)
+                                                        (widget-apply-action (widget-get widget :parent))))
+                                          :args (mapcar (lambda (entry)
+                                                          (widgetize entry path))
+                                                        entries)))))
+        (widget-create (or root-tree
+                           (widgetize (car entries) path)))))
     (setq imenu-list--pos-entries (sort (vconcat pos-entries) :key #'cdr :in-place t)))
   (goto-char (point-min)))
 
@@ -421,10 +419,7 @@ continue with the regular logic to find a translator function."
                       (interesting-widget (widget-get widget :parent))))))
       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
         (goto-char (point-min))
-        (rec (let ((path (reverse path)))
-               (if imenu-list--forced-top-level
-                   (cons imenu-list--forced-top-level path)
-                 path)))))))
+        (rec (reverse path))))))
 
 ;;; window display settings
 

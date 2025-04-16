@@ -1,8 +1,6 @@
 * TODO add more actions
 like bind the show-noselect thing to something.
 also the goto-and-toggle-tree pun is kinda ugly.
-* TODO no need for the ugly forced-root path grafting
-just look if imenu-alist is one item
 * TODO crawling the buffer line-by-line sucks
 should record drawn widget positions, after I figure out which widget
 method to wrap for that
