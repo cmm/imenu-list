@@ -292,6 +292,9 @@ EVENT is the click event, ITEM is the item clocked on."
   :type 'hook)
 
 (cl-defun imenu-list--lower-bound (vec x &key (key #'identity))
+  (unless (cl-plusp (length vec))
+    (cl-return-from imenu-list--lower-bound nil))
+
   (let (from to lower upper found)
     (cl-labels ((key-at (idx)
                   (funcall key (elt vec idx)))
