@@ -291,7 +291,11 @@ EVENT is the click event, ITEM is the item clocked on."
   :group 'imenu-list
   :type 'hook)
 
-(cl-defun imenu-list--lower-bound (vec x &key (key #'identity))
+(cl-defun imenu-list--lower-bound (vec x &key (key #'identity) (lessp #'<))
+  "A pretty normal \"lower-bound\" function actually.
+
+Given a sorted vector VEC, find the greatest value that is less than of
+equal to X and return its index, or NIL if not found."
   (unless (cl-plusp (length vec))
     (cl-return-from imenu-list--lower-bound nil))
 
@@ -306,15 +310,15 @@ EVENT is the click event, ITEM is the item clocked on."
                         found from)))
       (refresh 0 (1- (length vec)))
 
-      (when (<  x lower)
+      (when (funcall lessp x lower)
         (cl-return-from imenu-list--lower-bound nil))
-      (when (>= x upper)
+      (when (funcall lessp upper x)
         (cl-return-from imenu-list--lower-bound to))
 
       (while (> (- to from) 1)
         (let* ((half-way (/ (+ from to) 2))
                (middle   (key-at half-way)))
-          (if (> middle x)
+          (if (funcall lessp x middle)
               (refresh from half-way lower middle)
             (refresh half-way to middle upper)))))
     found))
@@ -403,57 +407,6 @@ continue with the regular logic to find a translator function."
                         (rec (cdr path))))))))
       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
         (rec (reverse path))))))
-
-;; (defun imenu-list--hl-current-entry ()
-;;   (when-let ((path (imenu-list--find-pos-path)))
-;;     (cl-labels ((rec (path)
-;;                   (let ((idx (car path)))
-;;                     (cond
-;;                      ((stringp idx)
-;;                       (cl-assert (string= (buffer-substring (point) (+ (point) (length idx))) idx))
-;;                       (hl-line-mode 1))
-;;                      (t
-;;                       (while (not (progn
-;;                                     (skip-to-button)
-;;                                     (at-idx idx)))
-;;                         (forward-line))
-;;                       (let ((widget (interesting-widget (widget-at))))
-;;                         (cond
-;;                          ((eq (widget-type widget) 'link)
-;;                           (rec (cdr path)))
-;;                          ((eq (widget-type widget) 'tree-widget)
-;;                           ;; first skip to the label
-;;                           (while (get-char-property (point) 'button)
-;;                             (forward-char))
-;;                           (while (not (get-char-property (point) 'button))
-;;                             (forward-char))
-;;                           (if (at-idx (cadr path))
-;;                               (rec (cdr path))
-;;                             (unless (widget-get widget :open)
-;;                               (save-excursion
-;;                                 (widget-apply-action widget)))
-;;                             (forward-line)
-;;                             (rec (cdr path))))))))))
-;;                 (skip-to-button ()
-;;                   (while (or (not (get-char-property (point) 'button))
-;;                              (eq (widget-type (widget-at)) 'tree-widget-leaf-icon))
-;;                     (forward-char)))
-;;                 (idx-of (widget)
-;;                   (or (widget-get widget :idx)
-;;                       (when-let ((parent (widget-get widget :parent)))
-;;                         (idx-of parent))))
-;;                 (at-idx (idx)
-;;                   (let ((idx-here (when-let ((widget (widget-at)))
-;;                                     (idx-of widget))))
-;;                     (eql idx-here idx)))
-;;                 (interesting-widget (widget)
-;;                   (when widget
-;;                     (if (member (widget-type widget) '(tree-widget link))
-;;                         widget
-;;                       (interesting-widget (widget-get widget :parent))))))
-;;       (with-selected-window (get-buffer-window (get-buffer imenu-list-buffer-name))
-;;         (goto-char (point-min))
-;;         (rec (reverse path))))))
 
 ;;; window display settings
 
