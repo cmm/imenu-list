@@ -167,8 +167,11 @@ current buffer, or nil.  See `imenu-list-position-translator' for details."
 
 (defun imenu-list-rescan-imenu ()
   "Force imenu to rescan the current buffer."
-  (setq imenu--index-alist nil)
-  (imenu--make-index-alist))
+  (setq imenu--index-alist nil
+        imenu--index-alist (imenu--make-index-alist))
+  (unless imenu-auto-rescan
+    ;; chop off the magic "*Rescan*" entry
+    (setq imenu--index-alist (cdr imenu--index-alist))))
 
 (defun imenu-list-collect-entries ()
   "Collect all `imenu' entries of the current buffer."
