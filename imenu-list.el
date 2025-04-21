@@ -47,6 +47,7 @@
 (require 'cl-lib)
 (require 'wid-edit)
 (require 'tree-widget)
+(require 'track-changes)
 
 (defconst imenu-list--buffer-name "*Ilist*"
   "Name of the buffer that is used to display imenu entries.")
@@ -168,14 +169,25 @@ current buffer, or nil.  See `imenu-list--position-translator' for details."
 (defun imenu-list--rescan-imenu ()
   "Force imenu to rescan the current buffer."
   (setq imenu--index-alist nil
-        imenu--index-alist (imenu--make-index-alist))
+        imenu--index-alist (let ((non-essential t))
+                             (imenu--make-index-alist)))
   (unless imenu-auto-rescan
     ;; chop off the magic "*Rescan*" entry
-    (setq imenu--index-alist (cdr imenu--index-alist))))
+    (setq imenu--index-alist (cdr imenu--index-alist)))
+  nil)
 
-(defun imenu-list--collect-entries ()
+(defvar-local imenu-list--buffer-changed-since-last-update nil)
+
+(defun imenu-list--collect-entries (force-update)
   "Collect all `imenu' entries of the current buffer."
-  (imenu-list--rescan-imenu)
+  (when (or force-update
+            (null imenu--index-alist)
+            (null imenu-list--last-location)
+            (not (eq (marker-buffer imenu-list--last-location) (current-buffer)))
+            (and imenu-list--buffer-changed-since-last-update
+                 (<= (buffer-size) imenu-auto-rescan-maxout)))
+    (imenu-list--rescan-imenu)
+    (setq imenu-list--buffer-changed-since-last-update nil))
   (setq imenu-list--imenu-entries imenu--index-alist)
   (setq imenu-list--displayed-buffer (current-buffer)))
 
@@ -383,13 +395,13 @@ continue with the regular logic to find a translator function."
 (defun imenu-list--hl-current-entry ()
   (when-let ((path (imenu-list--find-pos-path)))
     (cl-labels ((rec (path)
-                  (let ((backlink (car path)))
+                  (when-let ((backlink (car path)))
                     (cond
                      ((stringp backlink)
                       (cl-assert (string= (buffer-substring (point) (+ (point) (length backlink))) backlink))
                       (hl-line-mode 1))
                      (t
-                      (let ((widget (cdr backlink)))
+                      (when-let ((widget (cdr backlink)))
                         (cl-ecase (widget-type widget)
                           (link
                            (goto-char (widget-get widget :from)))
@@ -499,43 +511,81 @@ Install entry for imenu-list in `purpose-special-action-sequences'."
           (imenu-list-mode))
         buffer)))
 
-(defun imenu-list--update (&optional force-update)
+(defun imenu-list--imenu-available-p ()
+  ;; this is lifted from imenu implementation and is gross
+  (or (and imenu-prev-index-position-function
+	       imenu-extract-index-name-function)
+	  imenu-generic-expression
+	  (not (eq imenu-create-index-function
+		   'imenu-default-create-index-function))))
+
+(cl-defun imenu-list--update (&optional force-update)
   "Update the imenu-list buffer.
 If the imenu-list buffer doesn't exist, create it.
 If FORCE-UPDATE is non-nil, the imenu-list buffer is updated even if the
 imenu entries did not change since the last update."
+  (unless global-imenu-list-mode
+    (imenu-list--stop-timer)
+    (cl-return-from imenu-list--update nil))
+
+  ;; ignore the Ilist buffer
+  (when (eq major-mode 'imenu-list-mode)
+    (cl-return-from imenu-list--update nil))
+
+  (unless (imenu-list--imenu-available-p)
+    (cl-return-from imenu-list--update nil))
+
+  (unless imenu-list--change-tracker
+    (setq imenu-list--change-tracker
+          (track-changes-register (lambda (id)
+                                    (if global-imenu-list-mode
+                                        (unless (track-changes-inconsistent-state-p)
+                                          (track-changes-fetch id (lambda (&rest args)
+                                                                    (setq imenu-list--buffer-changed-since-last-update t))))
+                                      (imenu-list--unregister-change-tracker)))
+                                  :nobefore t))
+    ;; assume that if imenu is available then local hooks are not
+    ;; inhibited
+    (add-hook 'after-revert-hook 'imenu-list--after-revert)
+    (add-hook 'kill-buffer-hook 'imenu-list--unregister-change-tracker))
+
   (catch 'index-failure
     (let ((old-entries imenu-list--imenu-entries)
-          (location (point-marker)))
+          (location (point-marker))
+          (quitted nil))
       ;; don't update if `point' didn't move
-      (unless (and (null force-update)
+      (unless (and (marker-buffer location)
+                   (null force-update)
                    imenu-list--last-location
                    (marker-buffer imenu-list--last-location)
                    (= location imenu-list--last-location))
-        (setq imenu-list--last-location location)
         (condition-case err
-            (imenu-list--collect-entries)
+            (imenu-list--collect-entries force-update)
           (imenu-unavailable (if imenu-list-persist-when-imenu-index-unavailable
                                  (throw 'index-failure nil)
                                (imenu-list--clear))))
+        (setq imenu-list--last-location location)
         (when (or force-update
                   ;; check if Ilist buffer is alive, in case it was killed
                   ;; since last update
                   (null (get-buffer imenu-list--buffer-name))
                   (not (equal old-entries imenu-list--imenu-entries)))
           (with-current-buffer (imenu-list--get-buffer-create)
-            (imenu-list--insert-entries)))
-        (when imenu-list-update-current-entry
-          (imenu-list--hl-current-entry))
-        (run-hooks 'imenu-list-update-hook)
+            (unless (with-local-quit
+                      (imenu-list--insert-entries))
+              (setq quitted t))))
+        (when (and imenu-list-update-current-entry (not quitted))
+          (when (with-local-quit
+                  (imenu-list--hl-current-entry)
+                  t)
+            (run-hooks 'imenu-list-update-hook)))
         nil))))
 
 (defun imenu-list--clear ()
   "Clear the imenu-list buffer."
   (let ((imenu-buffer (get-buffer imenu-list--buffer-name)))
     (when imenu-buffer
-      (setq imenu-list--imenu-entries nil
-            imenu-list--line-entries nil)
+      (setq imenu-list--imenu-entries nil)
       (with-current-buffer imenu-buffer
         (let ((inhibit-read-only t))
           (erase-buffer))))))
@@ -602,14 +652,22 @@ If `global-imenu-list-mode' is already disabled, just call `quit-window'."
          (prog1 (set-default sym val)
            (when imenu-list--timer (imenu-list--start-timer)))))
 
+(defvar-local imenu-list--change-tracker nil)
+
+(defun imenu-list--after-revert ()
+  (setq imenu-list--buffer-changed-since-last-update t))
+
+(defun imenu-list--unregister-change-tracker ()
+  (when imenu-list--change-tracker
+    (track-changes-unregister imenu-list--change-tracker)
+    (setq imenu-list--change-tracker nil)))
+
 (defun imenu-list--start-timer ()
   "Start timer to auto-update imenu-list index and window."
   (imenu-list--stop-timer)
   (setq imenu-list--timer
         (run-with-idle-timer imenu-list-idle-update-delay t
-                             (lambda ()
-                               (let ((non-essential t))
-                                (imenu-list--update))))))
+                             'imenu-list--update)))
 
 (defun imenu-list--stop-timer ()
   "Stop timer to auto-update imenu-list index and window."
@@ -619,11 +677,11 @@ If `global-imenu-list-mode' is already disabled, just call `quit-window'."
 
 (defcustom imenu-list-auto-update t
   "Whether imenu-list should automatically update its index.
-If non-nil, imenu-list automatically updates the entries of its
-index every `imenu-list-idle-update-delay' seconds.  When
-updating this value from Lisp code, you should call
+If non-nil, imenu-list automatically updates the entries of its index
+every `imenu-list-idle-update-delay' seconds, if the buffer contents
+changed.  When updating this value from Lisp code, you should call
 `imenu-list--start-timer' or `imenu-list--stop-timer' explicitly
-afterwards."
+afterwards.  `imenu-auto-rescan-maxout' is observed."
   :group 'imenu-list
   :type 'boolean
   :set (lambda (sym val)
