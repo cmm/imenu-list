@@ -202,6 +202,9 @@ EVENT is the click event, ITEM is the item clocked on."
         (idx 0)
         pos-entries)
     (erase-buffer)
+    (setq-local tree-widget-before-create-icon-functions
+                (list (lambda (icon)
+                        (widget-put icon :tab-order -1))))
     (cl-labels ((sorted (items)
                   (sort items :key (lambda (item)
                                      (let* ((raw-pos (imenu-list--item-pos item)))
@@ -232,9 +235,7 @@ EVENT is the click event, ITEM is the item clocked on."
                                                        (let ((widget (widget-at pos)))
                                                          (while (not (member (widget-type widget) '(link tree-widget)))
                                                            (setq widget (widget-get widget :parent)))
-                                                         (setf (cdr backlink) widget)
-                                                         (dolist (button (widget-get widget :buttons))
-                                                           (widget-put button :tab-order -1)))))))))))
+                                                         (setf (cdr backlink) widget))))))))))
                 (link (backlink tag face action)
                   (tracked-widget backlink 'link
                                   :tag tag
