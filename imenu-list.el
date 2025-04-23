@@ -173,8 +173,7 @@ current buffer, or nil.  See `imenu-list--position-translator' for details."
                              (imenu--make-index-alist)))
   (unless imenu-auto-rescan
     ;; chop off the magic "*Rescan*" entry
-    (setq imenu--index-alist (cdr imenu--index-alist)))
-  nil)
+    (setq imenu--index-alist (cdr imenu--index-alist))))
 
 (defvar-local imenu-list--buffer-changed-since-last-update nil)
 
@@ -250,6 +249,9 @@ EVENT is the click event, ITEM is the item clocked on."
                                                        (let ((widget (widget-at pos)))
                                                          (while (not (member (widget-type widget) '(link tree-widget)))
                                                            (setq widget (widget-get widget :parent)))
+                                                         ;; exclude buttons from tabbing
+                                                         (dolist (button (widget-get widget :buttons))
+                                                           (widget-put button :tab-order -1))
                                                          (setf (cdr backlink) widget))))))))))
                 (link (backlink tag face action)
                   (tracked-widget backlink 'link
