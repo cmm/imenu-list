@@ -169,8 +169,7 @@ current buffer, or nil.  See `imenu-list--position-translator' for details."
 (defun imenu-list--rescan-imenu ()
   "Force imenu to rescan the current buffer."
   (setq imenu--index-alist nil
-        imenu--index-alist (let ((non-essential t))
-                             (imenu--make-index-alist)))
+        imenu--index-alist (imenu--make-index-alist))
   (unless imenu-auto-rescan
     ;; chop off the magic "*Rescan*" entry
     (setq imenu--index-alist (cdr imenu--index-alist))))
@@ -208,17 +207,12 @@ EVENT is the click event, ITEM is the item clocked on."
 
 (defvar imenu-list--pos-entries nil)
 
-(defvar imenu-list--last-created-icon)
-(defun imenu-list--save-last-created-icon (icon)
-  (setq imenu-list--last-created-icon icon))
-
 (defun imenu-list--insert-entries ()
   (let ((inhibit-read-only t)
         (idx 0)
         pos-entries
         last-icon)
     (erase-buffer)
-    (setq-local tree-widget-before-create-icon-functions (list 'imenu-list--save-last-created-icon))
     (cl-labels ((sorted (items)
                   (sort items :key (lambda (item)
                                      (let* ((raw-pos (imenu-list--item-pos item)))
@@ -394,7 +388,7 @@ continue with the regular logic to find a translator function."
    ;; default - return position as is
    (t #'identity)))
 
-(defun imenu-list--hl-current-entry ()
+(cl-defun imenu-list--hl-current-entry ()
   (when-let ((path (imenu-list--find-pos-path)))
     (cl-labels ((rec (path)
                   (when-let ((backlink (car path)))
@@ -409,7 +403,8 @@ continue with the regular logic to find a translator function."
                            (goto-char (widget-get widget :from)))
                           (tree-widget
                            (unless (widget-get widget :open)
-                             (widget-apply-action widget))))
+                             (widget-apply-action widget)
+                             (cl-return-from imenu-list--hl-current-entry))))
                         (rec (cdr path))))))))
       (with-selected-window (get-buffer-window (get-buffer imenu-list--buffer-name))
         (rec (reverse path))))))
@@ -549,32 +544,31 @@ imenu entries did not change since the last update."
     (add-hook 'after-revert-hook 'imenu-list--after-revert)
     (add-hook 'kill-buffer-hook 'imenu-list--unregister-change-tracker))
 
-  (catch 'index-failure
-    (let ((old-entries imenu-list--imenu-entries)
-          (location (point-marker)))
-      ;; don't update if `point' didn't move
-      (unless (and (marker-buffer location)
-                   (null force-update)
-                   imenu-list--last-location
-                   (marker-buffer imenu-list--last-location)
-                   (= location imenu-list--last-location))
-        (condition-case err
-            (imenu-list--collect-entries force-update)
-          (imenu-unavailable (if imenu-list-persist-when-imenu-index-unavailable
-                                 (throw 'index-failure nil)
-                               (imenu-list--clear))))
-        (setq imenu-list--last-location location)
-        (when (or force-update
-                  ;; check if Ilist buffer is alive, in case it was killed
-                  ;; since last update
-                  (null (get-buffer imenu-list--buffer-name))
-                  (not (equal old-entries imenu-list--imenu-entries)))
-          (with-current-buffer (imenu-list--get-buffer-create)
-            (imenu-list--insert-entries)))
-        (when imenu-list-update-current-entry
-          (imenu-list--hl-current-entry)
-          (run-hooks 'imenu-list-update-hook))
-        nil))))
+  (let ((old-entries imenu-list--imenu-entries)
+        (location (point-marker)))
+    ;; don't update if `point' didn't move
+    (unless (and (marker-buffer location)
+                 (null force-update)
+                 imenu-list--last-location
+                 (marker-buffer imenu-list--last-location)
+                 (= location imenu-list--last-location))
+      (condition-case err
+          (imenu-list--collect-entries force-update)
+        (imenu-unavailable (if imenu-list-persist-when-imenu-index-unavailable
+                               (cl-return-from imenu-list--update)
+                             (imenu-list--clear))))
+      (setq imenu-list--last-location location)
+      (when (or force-update
+                ;; check if Ilist buffer is alive, in case it was killed
+                ;; since last update
+                (null (get-buffer imenu-list--buffer-name))
+                (not (equal old-entries imenu-list--imenu-entries)))
+        (with-current-buffer (imenu-list--get-buffer-create)
+          (imenu-list--insert-entries)))
+      (when imenu-list-update-current-entry
+        (imenu-list--hl-current-entry)
+        (run-hooks 'imenu-list-update-hook))
+      nil)))
 
 (defun imenu-list--clear ()
   "Clear the imenu-list buffer."
