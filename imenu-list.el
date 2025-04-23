@@ -544,15 +544,12 @@ imenu entries did not change since the last update."
                                                                     (setq imenu-list--buffer-changed-since-last-update t))))
                                       (imenu-list--unregister-change-tracker)))
                                   :nobefore t))
-    ;; assume that if imenu is available then local hooks are not
-    ;; inhibited
     (add-hook 'after-revert-hook 'imenu-list--after-revert)
     (add-hook 'kill-buffer-hook 'imenu-list--unregister-change-tracker))
 
   (catch 'index-failure
     (let ((old-entries imenu-list--imenu-entries)
-          (location (point-marker))
-          (quitted nil))
+          (location (point-marker)))
       ;; don't update if `point' didn't move
       (unless (and (marker-buffer location)
                    (null force-update)
@@ -571,14 +568,10 @@ imenu entries did not change since the last update."
                   (null (get-buffer imenu-list--buffer-name))
                   (not (equal old-entries imenu-list--imenu-entries)))
           (with-current-buffer (imenu-list--get-buffer-create)
-            (unless (with-local-quit
-                      (imenu-list--insert-entries))
-              (setq quitted t))))
-        (when (and imenu-list-update-current-entry (not quitted))
-          (when (with-local-quit
-                  (imenu-list--hl-current-entry)
-                  t)
-            (run-hooks 'imenu-list-update-hook)))
+            (imenu-list--insert-entries)))
+        (when imenu-list-update-current-entry
+          (imenu-list--hl-current-entry)
+          (run-hooks 'imenu-list-update-hook))
         nil))))
 
 (defun imenu-list--clear ()
