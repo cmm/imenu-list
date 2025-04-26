@@ -1,7 +1,3 @@
-* TODO add more actions
-like bind the show-noselect thing to something.
-also the goto-and-toggle-tree pun is kinda ugly.
-* fix performance
-it sucks, but according to profile it's
-Imenu/Eglot/over-eager-LSP-server (like Nixd with all-packages.nix)
-that sucks and not us, so
+* TODO just restore the hideshow hack, it's probably way faster
+* TODO clean up the imenu-list buffers when their clients die
+* TODO disable refresh on any imenu error, especially timeouts
