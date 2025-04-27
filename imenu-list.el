@@ -161,7 +161,7 @@ current buffer, or nil.  See `imenu-list--position-translator' for details."
             (null imenu--index-alist)
             (and imenu-list--buffer-changed-since-last-update
                  (<= (buffer-size) imenu-auto-rescan-maxout)))
-    (imenu--make-index-alist)
+    (imenu--make-index-alist t)
     (setq imenu-list--buffer-changed-since-last-update nil)))
 
 ;;; print entries
