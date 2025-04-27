@@ -189,7 +189,7 @@ EVENT is the click event, ITEM is the item clocked on."
      (erase-buffer)
      (cl-labels ((sorted (items)
                    (sort items :key (lambda (item)
-                                      (let* ((raw-pos (imenu-list--item-pos item)))
+                                      (let* ((raw-pos (if item (imenu-list--item-pos item) 0)))
                                         (cond
                                          ((markerp raw-pos) (or (marker-position raw-pos) -1))
                                          ((null raw-pos) 0)
@@ -254,24 +254,26 @@ EVENT is the click event, ITEM is the item clocked on."
                              (get-face path nil)
                              (lambda (_ __)
                                (imenu-list--goto-entry item)))))))
-       (let* ((entries (sorted index-alist))
-              path
-              (root-tree (when (cdr entries)
-                           (let ((backlink (list idx)))
-                             (setq path (list backlink))
-                             (tracked-widget backlink 'tree-widget
-                                             :idx  idx
-                                             :node (link (bump-idx)
-                                                         "*root*"
-                                                         'imenu-list-entry-face-0
-                                                         (lambda (widget event)
-                                                           (widget-parent-action widget event)))
-                                             :args (mapcar (lambda (entry)
-                                                             (widgetize entry path))
-                                                           entries))))))
-         (widget-create (or root-tree
-                            (widgetize (car entries) path)))
-         (widget-setup)))
+       (when (and index-alist
+                  (not (equal index-alist (list nil))))
+         (let* ((entries (sorted index-alist))
+                path
+                (root-tree (when (cdr entries)
+                             (let ((backlink (list idx)))
+                               (setq path (list backlink))
+                               (tracked-widget backlink 'tree-widget
+                                               :idx  idx
+                                               :node (link (bump-idx)
+                                                           "*root*"
+                                                           'imenu-list-entry-face-0
+                                                           (lambda (widget event)
+                                                             (widget-parent-action widget event)))
+                                               :args (mapcar (lambda (entry)
+                                                               (widgetize entry path))
+                                                             entries))))))
+           (widget-create (or root-tree
+                              (widgetize (car entries) path)))
+           (widget-setup))))
      (setq imenu-list--pos-entries (sort (vconcat pos-entries) :key #'cdr :in-place t)))
    (goto-char (point-min))))
 
