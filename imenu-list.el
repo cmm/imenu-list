@@ -522,10 +522,14 @@ imenu entries did not change since the last update."
                      (marker-buffer imenu-list--last-location)
                      (= location imenu-list--last-location))
 
-          (condition-case nil
+          (condition-case err
               (imenu-list--collect-entries force-update)
             (t
-             (setq imenu-list--invalidp t))
+             (setq imenu-list--invalidp t)
+             (with-current-buffer imenu-list--buffer
+               (let ((inhibit-read-only t))
+                 (erase-buffer)
+                 (insert "Imenu failed: %s" err))))
             (:success
              (when (or force-update
                        (not (equal old-entries imenu--index-alist)))
