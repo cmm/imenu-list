@@ -472,6 +472,23 @@ See `display-buffer-alist' for a description of BUFFER and ALIST."
 
 (defvar-local imenu-list--invalidp nil)
 
+(defvar imenu-list--death-row '())
+
+(defun imenu-list--sentence-buffer ()
+  (when (and imenu-list--buffer
+             (buffer-live-p imenu-list--buffer))
+    (push imenu-list--buffer imenu-list--death-row)))
+
+(defun imenu-list--reap ()
+  (let ((kill-list imenu-list--death-row))
+    (setq imenu-list--death-row '())
+    (dolist (buffer kill-list)
+      (if (and (buffer-live-p buffer)
+               (eq (with-current-buffer buffer imenu-list--client-buffer) (current-buffer)))
+          (push buffer imenu-list--death-row)
+        (ignore-errors
+          (kill-buffer buffer))))))
+
 (cl-defun imenu-list--update (&optional force-update)
   "Update the imenu-list buffer.
 If the imenu-list buffer doesn't exist, create it.
@@ -490,7 +507,11 @@ imenu entries did not change since the last update."
                (imenu-list--get-window))
 
       (add-hook 'after-change-functions 'imenu-list--after-change)
+      (add-hook 'kill-buffer-hook 'imenu-list--sentence-buffer)
+
       (imenu-list-show-noselect)
+
+      (imenu-list--reap)
 
       (let ((old-entries imenu--index-alist)
             (location (point-marker)))
@@ -606,6 +627,7 @@ afterwards.  `imenu-auto-rescan-maxout' is observed."
         (imenu-list-show-noselect)
         (imenu-list--update t))
     (imenu-list--stop-timer)
+    (imenu-list--reap)
     (advice-remove 'imenu--make-index-alist 'imenu-list--make-index-wrapper)
     (dolist (buffer (buffer-list))
       (when (eq (with-current-buffer buffer major-mode) 'imenu-list-mode)

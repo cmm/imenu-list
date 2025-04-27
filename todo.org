@@ -1,3 +1,3 @@
 * TODO just restore the hideshow hack, it's probably way faster
-* TODO clean up the imenu-list buffers when their clients die
+* DONE clean up the imenu-list buffers when their clients die
 * DONE disable refresh on any imenu error, especially timeouts
