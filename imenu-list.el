@@ -513,13 +513,18 @@ imenu entries did not change since the last update."
              (when (setq hl-done-p (imenu-list--hl-current-entry force-update))
                (setq imenu-list--last-location location)))))))
 
-    (unless (or force-update hl-done-p)
-      (let ((idle-time (current-idle-time)))
-        (let ((imenu-list-idle-update-delay
-               (if idle-time
-                   (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
-                 (1+ imenu-list-idle-update-delay))))
-          (imenu-list--start-timer))))))
+    (cond
+     ((not (or force-update hl-done-p))
+      ;; run by timer, work left to do: set idle timer without auto-repeat
+      (let* ((idle-time (current-idle-time))
+             (delay
+              (if idle-time
+                  (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
+                imenu-list-idle-update-delay)))
+        (imenu-list--start-timer :delay delay :repeat nil)))
+     ((and (not force-update) (not (timer--repeat-delay imenu-list--timer)))
+      ;; run by timer, no work left to do: set idle timer normally
+      (imenu-list--start-timer)))))
 
 (defun imenu-list-refresh ()
   "Refresh imenu-list buffer."
@@ -558,12 +563,11 @@ If `global-imenu-list-mode' is already disabled, just call `quit-window'."
            (when imenu-list--timer
              (imenu-list--start-timer)))))
 
-(defun imenu-list--start-timer ()
+(cl-defun imenu-list--start-timer (&key (delay imenu-list-idle-update-delay) (repeat t))
   "Start timer to auto-update imenu-list index and window."
   (imenu-list--stop-timer)
   (setq imenu-list--timer
-        (run-with-idle-timer imenu-list-idle-update-delay t
-                             'imenu-list--update)))
+        (run-with-idle-timer delay repeat 'imenu-list--update)))
 
 (defun imenu-list--stop-timer ()
   "Stop timer to auto-update imenu-list index and window."
