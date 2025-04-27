@@ -490,7 +490,6 @@ imenu entries did not change since the last update."
     (cl-return-from imenu-list--update nil))
 
   (add-to-list 'after-change-functions 'imenu-list--after-change)
-  (setq-local imenu-auto-rescan nil)
 
   (imenu-list-show-noselect)
 
@@ -576,16 +575,23 @@ afterwards.  `imenu-auto-rescan-maxout' is observed."
                (imenu-list--start-timer)
              (imenu-list--stop-timer)))))
 
+(defun imenu-list--make-index-wrapper (orig-fn &optional noerror)
+  ;; disable imenu-auto-rescan in global-imenu-list-mode
+  (let ((imenu-auto-rescan nil))
+    (funcall orig-fn noerror)))
+
 ;;;###autoload
 (define-minor-mode global-imenu-list-mode
   nil :global t :group 'imenu-list
   (if global-imenu-list-mode
       (progn
+        (advice-add 'imenu--make-index-alist :around 'imenu-list--make-index-wrapper)
         (when imenu-list-auto-update
           (imenu-list--start-timer))
         (imenu-list-show-noselect)
         (imenu-list--update t))
     (imenu-list--stop-timer)
+    (advice-remove 'imenu--make-index-alist 'imenu-list--make-index-wrapper)
     (dolist (buffer (buffer-list))
       (when (eq (with-current-buffer buffer major-mode) 'imenu-list-mode)
         (ignore-errors (quit-windows-on buffer))))))
