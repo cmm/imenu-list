@@ -371,7 +371,6 @@ continue with the regular logic to find a translator function."
                   (when-let ((backlink (car path)))
                     (cond
                      ((stringp backlink)
-                      (cl-assert (string= (buffer-substring (point) (+ (point) (length backlink))) backlink))
                       (hl-line-mode 1)
                       t)
                      (t
