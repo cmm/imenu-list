@@ -339,7 +339,7 @@ return its index, or NIL if not found."
     (pop-to-buffer imenu-list--client-buffer)
     (goto-char pos)
     (run-hooks 'imenu-list-after-jump-hook)
-    (imenu-list--hl-current-entry)))
+    (imenu-list--hl-current-entry t)))
 
 (defun imenu-list--position-translator ()
   "Get the correct position translator function for the current buffer.
@@ -365,14 +365,15 @@ continue with the regular logic to find a translator function."
    ;; default - return position as is
    (t #'identity)))
 
-(cl-defun imenu-list--hl-current-entry ()
+(cl-defun imenu-list--hl-current-entry (&optional now)
   (when-let ((path (imenu-list--find-pos-path)))
     (cl-labels ((rec (path)
                   (when-let ((backlink (car path)))
                     (cond
                      ((stringp backlink)
                       (cl-assert (string= (buffer-substring (point) (+ (point) (length backlink))) backlink))
-                      (hl-line-mode 1))
+                      (hl-line-mode 1)
+                      t)
                      (t
                       (when-let ((widget (cdr backlink)))
                         (cl-ecase (widget-type widget)
@@ -381,7 +382,8 @@ continue with the regular logic to find a translator function."
                           (tree-widget
                            (unless (widget-get widget :open)
                              (widget-apply-action widget)
-                             (cl-return-from imenu-list--hl-current-entry))))
+                             (unless now
+                               (cl-return-from imenu-list--hl-current-entry nil)))))
                         (rec (cdr path))))))))
       (with-selected-window (get-buffer-window (imenu-list--get-buffer))
         (rec (reverse path))))))
@@ -404,11 +406,6 @@ Either 'right, 'left, 'above, 'below or 'none.  'none means leave
                  (const left)
                  (const right)
                  (const none)))
-
-(defcustom imenu-list-update-hook nil
-  "Hook to run after updating the imenu-list buffer."
-  :group 'imenu-list
-  :type 'hook)
 
 (defun imenu-list--split-size ()
   "Convert `imenu-list-size' to proper argument for `split-window'."
@@ -471,7 +468,9 @@ See `display-buffer-alist' for a description of BUFFER and ALIST."
 (defun imenu-list--after-change (&rest _)
   (if global-imenu-list-mode
       (setq imenu-list--buffer-changed-since-last-update t)
-    (delete 'imenu-list--after-change 'after-change-functions)))
+    (remove-hook 'after-change-functions 'imenu-list--after-change)))
+
+(defvar-local imenu-list--invalidp nil)
 
 (cl-defun imenu-list--update (&optional force-update)
   "Update the imenu-list buffer.
@@ -482,33 +481,45 @@ imenu entries did not change since the last update."
     (imenu-list--stop-timer)
     (cl-return-from imenu-list--update nil))
 
-  ;; do nothing in imenu-list buffers themselves or if no window
-  ;; displays imenu-list, and also if imenu is not available
-  (unless (and (not (eq major-mode 'imenu-list-mode))
+  (let ((hl-done-p t))
+    ;; do nothing in imenu-list buffers themselves or if no window
+    ;; displays imenu-list, and also if imenu is not available
+    (when (and (not (eq major-mode 'imenu-list-mode))
+               (not imenu-list--invalidp)
                (imenu-list--imenu-available-p)
                (imenu-list--get-window))
-    (cl-return-from imenu-list--update nil))
 
-  (add-to-list 'after-change-functions 'imenu-list--after-change)
+      (add-hook 'after-change-functions 'imenu-list--after-change)
+      (imenu-list-show-noselect)
 
-  (imenu-list-show-noselect)
+      (let ((old-entries imenu--index-alist)
+            (location (point-marker)))
+        ;; don't update if `point' didn't move
+        (unless (and (marker-buffer location)
+                     (null force-update)
+                     imenu-list--last-location
+                     (marker-buffer imenu-list--last-location)
+                     (= location imenu-list--last-location))
 
-  (let ((old-entries imenu--index-alist)
-        (location (point-marker)))
-    ;; don't update if `point' didn't move
-    (unless (and (marker-buffer location)
-                 (null force-update)
-                 imenu-list--last-location
-                 (marker-buffer imenu-list--last-location)
-                 (= location imenu-list--last-location))
-      (imenu-list--collect-entries force-update)
-      (setq imenu-list--last-location location)
-      (when (or force-update
-                (not (equal old-entries imenu--index-alist)))
-        (imenu-list--insert-entries imenu--index-alist))
-      (imenu-list--hl-current-entry)
-      (run-hooks 'imenu-list-update-hook)
-      nil)))
+          (condition-case nil
+              (imenu-list--collect-entries force-update)
+            (t
+             (setq imenu-list--invalidp t))
+            (:success
+             (when (or force-update
+                       (not (equal old-entries imenu--index-alist)))
+               (imenu-list--insert-entries imenu--index-alist))
+
+             (when (setq hl-done-p (imenu-list--hl-current-entry force-update))
+               (setq imenu-list--last-location location)))))))
+
+    (unless (or force-update hl-done-p)
+      (let ((idle-time (current-idle-time)))
+        (let ((imenu-list-idle-update-delay
+               (if idle-time
+                   (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
+                 (1+ imenu-list-idle-update-delay))))
+          (imenu-list--start-timer))))))
 
 (defun imenu-list-refresh ()
   "Refresh imenu-list buffer."
