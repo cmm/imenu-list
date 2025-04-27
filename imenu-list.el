@@ -430,6 +430,9 @@ See `display-buffer-alist' for a description of BUFFER and ALIST."
   (or (imenu-list-window)
       (let ((window (ignore-errors (split-window (frame-root-window) (imenu-list--split-size) imenu-list-position))))
         (when window
+          ;; use brute force to display the buffer in the window, and
+          ;; mark the window dedicated so no stray buffers end up
+          ;; there
           (window--display-buffer buffer window 'window alist)
           (set-window-dedicated-p window t)
           window))))
