@@ -368,7 +368,9 @@ continue with the regular logic to find a translator function."
    (t #'identity)))
 
 (cl-defun imenu-list--hl-current-entry (&optional now)
-  (when-let ((path (imenu-list--find-pos-path)))
+  (let ((path (imenu-list--find-pos-path)))
+    (unless path
+      (cl-return-from imenu-list--hl-current-entry t))
     (cl-labels ((rec (path)
                   (when-let ((backlink (car path)))
                     (cond
@@ -540,19 +542,19 @@ imenu entries did not change since the last update."
                (setq imenu-list--last-location location)))))))
 
     (unless force-update
-      ;; got run by idle timer
+      ;; got run by timer
       (cond
        ((not hl-done-p)
-        ;; work left to do: set idle timer without auto-repeat
+        ;; work left to do: set timer without auto-repeat
         (let* ((idle-time (current-idle-time))
                (delay
                 (if idle-time
                     (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
                   imenu-list-idle-update-delay)))
+          (message "non-repeating timer %s" delay)
           (imenu-list--start-timer :delay delay :repeat nil)))
-       ((null (timer--repeat-delay imenu-list--timer))
-        ;; got run by idle timer, no work left to do: set idle timer
-        ;; normally
+       ((or (null imenu-list--timer) (null (timer--repeat-delay imenu-list--timer)))
+        ;; got run by timer, no work left to do: set timer normally
         (imenu-list--start-timer))))))
 
 (defun imenu-list-refresh ()
