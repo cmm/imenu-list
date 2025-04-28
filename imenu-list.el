@@ -539,18 +539,21 @@ imenu entries did not change since the last update."
              (when (setq hl-done-p (imenu-list--hl-current-entry force-update))
                (setq imenu-list--last-location location)))))))
 
-    (cond
-     ((not (or force-update hl-done-p))
-      ;; run by timer, work left to do: set idle timer without auto-repeat
-      (let* ((idle-time (current-idle-time))
-             (delay
-              (if idle-time
-                  (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
-                imenu-list-idle-update-delay)))
-        (imenu-list--start-timer :delay delay :repeat nil)))
-     ((and (not force-update) (not (timer--repeat-delay imenu-list--timer)))
-      ;; run by timer, no work left to do: set idle timer normally
-      (imenu-list--start-timer)))))
+    (unless force-update
+      ;; got run by idle timer
+      (cond
+       ((not hl-done-p)
+        ;; work left to do: set idle timer without auto-repeat
+        (let* ((idle-time (current-idle-time))
+               (delay
+                (if idle-time
+                    (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
+                  imenu-list-idle-update-delay)))
+          (imenu-list--start-timer :delay delay :repeat nil)))
+       ((null (timer--repeat-delay imenu-list--timer))
+        ;; got run by idle timer, no work left to do: set idle timer
+        ;; normally
+        (imenu-list--start-timer))))))
 
 (defun imenu-list-refresh ()
   "Refresh imenu-list buffer."
