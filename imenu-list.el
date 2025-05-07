@@ -549,13 +549,10 @@ imenu entries did not change since the last update."
        ((not hl-done-p)
         ;; work left to do: set timer without auto-repeat
         (let* ((idle-time (current-idle-time))
-               (delay
-                (if idle-time
-                    (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
-                  imenu-list-idle-update-delay)))
-          (imenu-list--start-timer :delay delay :repeat nil)))
+               (idle-time-integer (if idle-time (time-convert idle-time 'integer) 0)))
+          (imenu-list--start-timer :delay (+ idle-time-integer imenu-list-idle-update-delay) :repeat nil)))
        ((or (null imenu-list--timer) (null (timer--repeat-delay imenu-list--timer)))
-        ;; got run by timer, no work left to do: set timer normally
+        ;; this was a one-off timer run, no work left to do: set timer normally
         (imenu-list--start-timer))))))
 
 (defun imenu-list-refresh ()
