@@ -553,7 +553,6 @@ imenu entries did not change since the last update."
                 (if idle-time
                     (+ (time-convert idle-time 'integer) imenu-list-idle-update-delay)
                   imenu-list-idle-update-delay)))
-          (message "non-repeating timer %s" delay)
           (imenu-list--start-timer :delay delay :repeat nil)))
        ((or (null imenu-list--timer) (null (timer--repeat-delay imenu-list--timer)))
         ;; got run by timer, no work left to do: set timer normally
