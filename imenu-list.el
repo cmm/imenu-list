@@ -454,10 +454,41 @@ See `display-buffer-alist' for a description of BUFFER and ALIST."
     (define-key map (kbd "q") #'imenu-list--quit-window)
     map))
 
+(require 'hideshow)
+
+(defun imenu-list--forward-sexp (&optional arg)
+  "Move to next entry of same depth.
+This function is intended to be used by `hs-minor-mode'.  Don't use it
+for anything else.
+ARG is ignored."
+  (beginning-of-line)
+  (while (= (char-after) 32)
+    (forward-char))
+  (let ((spaces (- (point) (point-at-bol))))
+    (forward-line)
+    ;; ignore-errors in case we're at the last line
+    (ignore-errors (forward-char spaces))
+    (while (and (not (eobp))
+                (= (char-after) 32))
+      (forward-line)
+      ;; ignore-errors in case we're at the last line
+      (ignore-errors (forward-char spaces))))
+  (forward-line -1)
+  (end-of-line))
+
+(defun imenu-list--install-hideshow ()
+  "Install imenu-list settings for hideshow."
+  ;; "\\b\\B" is a regexp that can't match anything
+  (setq-local comment-start "\\b\\B")
+  (setq-local comment-end "\\b\\B")
+  (setf (alist-get 'imenu-list-mode hs-special-modes-alist)
+        `("\\s-*\\+ " "\\s-*\\+ " ,comment-start imenu-list--forward-sexp nil)))
+
 (define-derived-mode imenu-list-mode special-mode "Ilist"
   "Major mode for showing the `imenu' entries of a buffer (an Ilist).
 \\{imenu-list-mode-map}"
   (setq-local mode-line-format imenu-list-mode-line-format)
+  (imenu-list--install-hideshow)
   (read-only-mode 1))
 
 (defun imenu-list--imenu-available-p ()
